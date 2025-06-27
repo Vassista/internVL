@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Interactive API Test Script for Grade Genius API Server
+Interactive API Test Script for InternVL API Server
 
 This script allows you to test the API server by providing file paths interactively.
 It supports both ZIP file uploads and individual image uploads without revealing the structure.
@@ -172,7 +172,7 @@ class APITester:
 def get_user_input():
     """Get file paths and job name from user"""
     print("\n" + "="*60)
-    print("🧪 Grade Genius API Test Script")
+    print("🧪 InternVL API Test Script")
     print("="*60)
 
     # Get API server URL

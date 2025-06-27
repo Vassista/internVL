@@ -1,6 +1,6 @@
 # API Test Script
 
-This interactive test script allows you to test your Grade Genius API server without revealing file structure details.
+This interactive test script allows you to test your InternVL API server without revealing file structure details.
 
 ## Features
 
@@ -48,7 +48,7 @@ This interactive test script allows you to test your Grade Genius API server wit
 ## Example Output:
 
 ```
-🧪 Grade Genius API Test Script
+🧪 InternVL API Test Script
 ============================================================
 
 Enter API server URL (default: http://localhost:8000):

@@ -233,7 +233,7 @@ async def process_upload(
     """Common upload processing for both ZIP and individual image uploads"""
     job_id = str(uuid.uuid4())
 
-    job_temp_dir = tempfile.mkdtemp(prefix=f"gradegenius_{job_id}_")
+    job_temp_dir = tempfile.mkdtemp(prefix=f"internvl_{job_id}_")
 
     try:
         model_answer_path = os.path.join(job_temp_dir, f"model_answer_{model_answer.filename}")
