@@ -11,14 +11,8 @@ import pandas as pd
 from api_models import StudentAnswer, StudentResult
 
 def extract_roll_number_from_filename(filename: str) -> str:
-    """Extract roll number from filename"""
-    name = Path(filename).stem
-    numbers = re.findall(r'\d+', name)
-
-    if numbers:
-        return numbers[-1]
-    else:
-        return name
+    """Extract roll number from filename - uses the entire filename without extension"""
+    return Path(filename).stem
 
 def validate_image_file(filename: str) -> bool:
     """Check if file is a valid image format"""
@@ -82,24 +76,23 @@ def calculate_score(student_answers: List[StudentAnswer], model_answers: List[St
     return {
         "correct": correct_count,
         "total": total_count,
-        "percentage": round(percentage, 2),
-        "grade": get_letter_grade(percentage)
+        "percentage": round(percentage, 2)
     }
 
-def get_letter_grade(percentage: float) -> str:
-    """Convert percentage to letter grade"""
-    if percentage >= 90:
-        return "A+"
-    elif percentage >= 80:
-        return "A"
-    elif percentage >= 70:
-        return "B"
-    elif percentage >= 60:
-        return "C"
-    elif percentage >= 50:
-        return "D"
-    else:
-        return "F"
+def create_summary_stats(results: List[StudentResult]) -> Dict:
+    """Create summary statistics for the evaluation"""
+    if not results:
+        return {"total_students": 0}
+
+    scores = [r.percentage for r in results]
+
+    return {
+        "total_students": len(results),
+        "average_score": round(sum(scores) / len(scores), 2),
+        "highest_score": max(scores),
+        "lowest_score": min(scores),
+        "pass_rate": len([s for s in scores if s >= 50]) / len(scores) * 100
+    }
 
 def parse_ocr_response(response: str) -> List[StudentAnswer]:
     """Parse InternVL OCR response to StudentAnswer objects"""
@@ -124,29 +117,6 @@ def parse_ocr_response(response: str) -> List[StudentAnswer]:
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"Error parsing OCR response: {e}")
         return []
-
-def create_summary_stats(results: List[StudentResult]) -> Dict:
-    """Create summary statistics for the evaluation"""
-    if not results:
-        return {"total_students": 0}
-
-    scores = [r.percentage for r in results]
-
-    return {
-        "total_students": len(results),
-        "average_score": round(sum(scores) / len(scores), 2),
-        "highest_score": max(scores),
-        "lowest_score": min(scores),
-        "pass_rate": len([s for s in scores if s >= 50]) / len(scores) * 100,
-        "grade_distribution": {
-            "A+": len([s for s in scores if s >= 90]),
-            "A": len([s for s in scores if 80 <= s < 90]),
-            "B": len([s for s in scores if 70 <= s < 80]),
-            "C": len([s for s in scores if 60 <= s < 70]),
-            "D": len([s for s in scores if 50 <= s < 60]),
-            "F": len([s for s in scores if s < 50])
-        }
-    }
 
 def cleanup_temp_files(temp_dir: str):
     """Clean up temporary files and directories"""
