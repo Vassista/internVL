@@ -56,65 +56,73 @@ class APITester:
             return None
 
         try:
-            # Prepare model answer file
-            with open(model_path, 'rb') as model_file:
-                files = {'model_answer': (model_path.name, model_file, 'image/jpeg')}
-                data = {'job_name': job_name}
+            # Check if student_files_path is a ZIP file or directory with images
+            if student_path.is_file() and student_path.suffix.lower() == '.zip':
+                # ZIP file upload
+                print(f"📦 Uploading ZIP file: {student_path.name}")
+                with open(model_path, 'rb') as model_file, open(student_path, 'rb') as zip_file:
+                    files = [
+                        ('model_answer', (model_path.name, model_file, 'image/jpeg')),
+                        ('student_sheets', (student_path.name, zip_file, 'application/zip'))
+                    ]
+                    data = {'job_name': job_name}
+                    response = self.session.post(
+                        f"{self.base_url}/upload/evaluation",
+                        files=files,
+                        data=data
+                    )
+            elif student_path.is_dir():
+                # Individual images upload
+                print(f"📁 Uploading individual images from directory: {student_path.name}")
+                image_files = []
+                image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
 
-                # Check if student_files_path is a ZIP file or directory with images
-                if student_path.is_file() and student_path.suffix.lower() == '.zip':
-                    # ZIP file upload
-                    print(f"📦 Uploading ZIP file: {student_path.name}")
-                    with open(student_path, 'rb') as zip_file:
-                        files['student_sheets'] = (student_path.name, zip_file, 'application/zip')
-                        response = self.session.post(
-                            f"{self.base_url}/upload/evaluation",
-                            files=files,
-                            data=data
-                        )
-                elif student_path.is_dir():
-                    # Individual images upload
-                    print(f"📁 Uploading individual images from directory: {student_path.name}")
-                    image_files = []
-                    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+                for img_path in student_path.iterdir():
+                    if img_path.is_file() and img_path.suffix.lower() in image_extensions:
+                        image_files.append(img_path)
 
-                    for img_path in student_path.iterdir():
-                        if img_path.is_file() and img_path.suffix.lower() in image_extensions:
-                            image_files.append(img_path)
+                if not image_files:
+                    print(f"❌ No image files found in directory: {student_path}")
+                    return None
 
-                    if not image_files:
-                        print(f"❌ No image files found in directory: {student_path}")
-                        return None
+                print(f"   Found {len(image_files)} image files")
 
-                    print(f"   Found {len(image_files)} image files")
+                # Open all files with context managers
+                try:
+                    file_handles = [open(model_path, 'rb')]
+                    file_handles.extend([open(img_path, 'rb') for img_path in image_files])
+                except IOError as e:
+                    print(f"❌ Failed to open files: {e}")
+                    return None
 
-                    # Prepare multiple files for individual upload
-                    student_files = []
-                    for img_path in image_files:
-                        with open(img_path, 'rb') as img_file:
-                            student_files.append(
-                                ('student_images', (img_path.name, img_file.read(), 'image/jpeg'))
-                            )
+                try:
+                    files = [('model_answer', (model_path.name, file_handles[0], 'image/jpeg'))]
+                    for i, img_path in enumerate(image_files, 1):
+                        files.append(('student_images', (img_path.name, file_handles[i], 'image/jpeg')))
 
-                    files.update(student_files)
+                    data = {'job_name': job_name}
                     response = self.session.post(
                         f"{self.base_url}/upload/individual",
                         files=files,
                         data=data
                     )
-                else:
-                    print(f"❌ Student files path must be either a ZIP file or a directory with images")
-                    return None
+                finally:
+                    # Close all file handles
+                    for fh in file_handles:
+                        fh.close()
+            else:
+                print(f"❌ Student files path must be either a ZIP file or a directory with images")
+                return None
 
-                response.raise_for_status()
-                result = response.json()
+            response.raise_for_status()
+            result = response.json()
 
-                job_id = result.get('job_id')
-                print(f"✅ Upload successful! Job ID: {job_id}")
-                print(f"   Job Name: {result.get('job_name')}")
-                print(f"   Status: {result.get('status')}")
+            job_id = result.get('job_id')
+            print(f"✅ Upload successful! Job ID: {job_id}")
+            print(f"   Job Name: {result.get('job_name')}")
+            print(f"   Status: {result.get('status')}")
 
-                return job_id
+            return job_id
 
         except requests.exceptions.RequestException as e:
             print(f"❌ Upload failed: {e}")
@@ -155,13 +163,20 @@ class APITester:
             status = self.check_job_status(job_id)
             current_status = status.get('status', 'unknown')
 
-            print(f"   Status: {current_status}")
+            # Show progress if available
+            if 'total_students' in status and 'processed_students' in status:
+                total = status['total_students']
+                processed = status['processed_students']
+                print(f"   Status: {current_status} ({processed}/{total} students processed)")
+            else:
+                print(f"   Status: {current_status}")
 
             if current_status == 'completed':
                 print(f"✅ Job completed successfully!")
                 return True
             elif current_status == 'failed':
-                print(f"❌ Job failed!")
+                error_msg = status.get('error_message', 'Unknown error')
+                print(f"❌ Job failed: {error_msg}")
                 return False
 
             time.sleep(POLL_INTERVAL)
@@ -175,8 +190,16 @@ def get_user_input():
     print("🧪 InternVL API Test Script")
     print("="*60)
 
+    # Show available test files if they exist
+    test_dir = Path("test_imgs")
+    if test_dir.exists():
+        print(f"\n📁 Available test files in {test_dir}:")
+        for item in test_dir.iterdir():
+            if item.is_file():
+                print(f"   {item.name}")
+
     # Get API server URL
-    base_url = input(f"Enter API server URL (default: {DEFAULT_BASE_URL}): ").strip()
+    base_url = input(f"\nEnter API server URL (default: {DEFAULT_BASE_URL}): ").strip()
     if not base_url:
         base_url = DEFAULT_BASE_URL
 
@@ -255,10 +278,6 @@ def print_summary(results: Dict):
         print(f"   Highest Score: {summary.get('highest_score', 0):.1f}%")
         print(f"   Lowest Score: {summary.get('lowest_score', 0):.1f}%")
         print(f"   Pass Rate: {summary.get('pass_rate', 0):.1f}%")
-
-        grade_dist = summary.get('grade_distribution', {})
-        if grade_dist:
-            print(f"   Grade Distribution: {grade_dist}")
 
 def main():
     try:
