@@ -12,7 +12,7 @@ prod_codes/
 ├── autoeval_ocr.py        # InternVL OCR processing (existing)
 ├── internvl.py            # InternVL core functions (existing)
 ├── internvl_prompt.txt    # OCR prompt (existing)
-├── test_api.py            # API testing script
+├── interactive_test.py      # API testing script
 ├── requirements.txt       # Dependencies
 └── README.md             # This file
 ```
@@ -36,7 +36,7 @@ Open your browser and go to: `http://127.0.0.1:8000/docs`
 
 ### 4. Test the API
 ```bash
-python test_api.py
+python interactive_test.py
 ```
 
 ## API Endpoints
@@ -182,15 +182,7 @@ Get the evaluation results (only available when status is "completed").
     "average_score": 82.5,
     "highest_score": 95.0,
     "lowest_score": 65.0,
-    "pass_rate": 88.0,
-    "grade_distribution": {
-      "A+": 5,
-      "A": 8,
-      "B": 7,
-      "C": 3,
-      "D": 2,
-      "F": 0
-    }
+    "pass_rate": 88.0
   },
   "created_at": "2025-06-24T10:30:00",
   "completed_at": "2025-06-24T10:35:00"
@@ -263,7 +255,7 @@ The API provides detailed error messages for:
 
 ## Testing
 
-Use the included `test_api.py` script to verify all functionality works correctly with your data.
+Use the included `interactive_test.py` script to verify all functionality works correctly with your data.
 
 ## Support
 

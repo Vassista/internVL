@@ -1,9 +1,9 @@
 /**
- * API Service for Grade Genius
+ * API Service for InternVL
  * Handles communication with FastAPI backend
  */
 
-const API_BASE_URL = 'http://localhost:8000'; // Change this for production
+const API_BASE_URL = 'http://localhost:8000'; 
 
 export interface StudentAnswer {
   sn: number;
