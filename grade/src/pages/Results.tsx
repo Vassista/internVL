@@ -1,16 +1,53 @@
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, RefreshCw, Download, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Loader2, RefreshCw, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { apiService, EvaluationResults, JobStatus } from '@/services/apiService';
 import ResultsTableNew from '@/components/results/ResultsTableNew';
 
+// Status badge component
+const StatusBadge = ({ status }: { status: string }) => {
+  switch (status) {
+    case 'completed':
+      return (
+        <Badge variant="default" className="bg-green-500">
+          <CheckCircle className="w-3 h-3 mr-1" />
+          Completed
+        </Badge>
+      );
+    case 'processing':
+      return (
+        <Badge variant="secondary">
+          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+          Processing
+        </Badge>
+      );
+    case 'pending':
+      return (
+        <Badge variant="outline">
+          <Clock className="w-3 h-3 mr-1" />
+          Pending
+        </Badge>
+      );
+    case 'failed':
+      return (
+        <Badge variant="destructive">
+          <AlertCircle className="w-3 h-3 mr-1" />
+          Failed
+        </Badge>
+      );
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+};
+
 const Results = () => {
   const [searchParams] = useSearchParams();
+  const location = useLocation();  // Get job ID from URL parameters
   const jobId = searchParams.get('job_id');
 
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
@@ -18,68 +55,73 @@ const Results = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchJobStatus = async () => {
-    if (!jobId) {
+  // Function to fetch job status and results
+  const loadJobData = async (id: string) => {
+    if (!id) {
       setError('No job ID provided');
       setLoading(false);
       return;
     }
 
+    setLoading(true);
+    setError(null);
+
     try {
-      const status = await apiService.getJobStatus(jobId);
+      console.log('Loading job data for ID:', id);
+
+      // Fetch job status
+      const status = await apiService.getJobStatus(id);
+      console.log('Job status:', status);
       setJobStatus(status);
 
+      // If completed, fetch results
       if (status.status === 'completed') {
-        const evaluationResults = await apiService.getResults(jobId);
+        console.log('Job completed, fetching results...');
+        const evaluationResults = await apiService.getResults(id);
+        console.log('Results:', evaluationResults);
         setResults(evaluationResults);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch results');
+      console.error('Error loading job data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load evaluation data');
     } finally {
       setLoading(false);
     }
   };
 
+  // Load data when component mounts or jobId changes
   useEffect(() => {
-    fetchJobStatus();
+    if (jobId) {
+      loadJobData(jobId);
+    } else {
+      setLoading(false);
+      setError('No job ID provided');
+    }
+  }, [jobId]);
 
-    // Poll for updates if job is still processing
+  // Poll for updates if job is still processing
+  useEffect(() => {
+    if (!jobStatus || (jobStatus.status !== 'processing' && jobStatus.status !== 'pending')) {
+      return;
+    }
+
     const interval = setInterval(() => {
-      if (jobStatus?.status === 'processing' || jobStatus?.status === 'pending') {
-        fetchJobStatus();
+      if (jobId) {
+        loadJobData(jobId);
       }
     }, 5000); // Poll every 5 seconds
 
     return () => clearInterval(interval);
-  }, [jobId, jobStatus?.status]);
+  }, [jobStatus?.status, jobId]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <Badge variant="default" className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
-      case 'processing':
-        return <Badge variant="secondary"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Processing</Badge>;
-      case 'pending':
-        return <Badge variant="outline"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
-      case 'failed':
-        return <Badge variant="destructive"><AlertCircle className="w-3 h-3 mr-1" />Failed</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+  // Refresh handler
+  const handleRefresh = () => {
+    if (jobId) {
+      loadJobData(jobId);
     }
   };
 
-  if (!jobId) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <Alert variant="destructive">
-          <AlertDescription>
-            No job ID provided. Please upload files first or check your URL.
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
+  // Render loading state
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -91,13 +133,14 @@ const Results = () => {
     );
   }
 
+  // Render error state
   if (error) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-        <Button onClick={fetchJobStatus} className="mt-4" variant="outline">
+        <Button onClick={handleRefresh} className="mt-4" variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
           Retry
         </Button>
@@ -105,6 +148,7 @@ const Results = () => {
     );
   }
 
+  // Render main results UI
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
@@ -116,8 +160,8 @@ const Results = () => {
           )}
         </div>
         <div className="flex items-center gap-4">
-          {jobStatus && getStatusBadge(jobStatus.status)}
-          <Button onClick={fetchJobStatus} variant="outline" size="sm">
+          {jobStatus && <StatusBadge status={jobStatus.status} />}
+          <Button onClick={handleRefresh} variant="outline" size="sm">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -134,7 +178,9 @@ const Results = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <div className="text-sm text-gray-500">Status</div>
-                <div className="font-medium">{getStatusBadge(jobStatus.status)}</div>
+                <div className="font-medium">
+                  <StatusBadge status={jobStatus.status} />
+                </div>
               </div>
               <div>
                 <div className="text-sm text-gray-500">Progress</div>
@@ -183,7 +229,7 @@ const Results = () => {
         </Card>
       )}
 
-      {/* Results */}
+      {/* Results Section */}
       {results && results.status === 'completed' && (
         <>
           {/* Summary Stats */}
