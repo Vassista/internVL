@@ -272,7 +272,15 @@ class ApiService {
 
   async getJobStatus(jobId: string): Promise<JobStatus> {
     try {
-      const response = await fetch(`${API_BASE_URL}/evaluation/${jobId}/status`);
+      // Create an AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+
+      const response = await fetch(`${API_BASE_URL}/evaluation/${jobId}/status`, {
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`Failed to get job status: ${response.statusText}`);
@@ -294,7 +302,15 @@ class ApiService {
 
   async getResults(jobId: string): Promise<EvaluationResults> {
     try {
-      const response = await fetch(`${API_BASE_URL}/results/${jobId}`);
+      // Create an AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+
+      const response = await fetch(`${API_BASE_URL}/results/${jobId}`, {
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`Failed to get results: ${response.statusText}`);
