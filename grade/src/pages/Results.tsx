@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 
 const Results = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Get job ID from URL parameters
   const urlJobId = searchParams.get('job_id');
@@ -106,8 +107,11 @@ const Results = () => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
-      setJobId(searchInput.trim());
-      loadJobData(searchInput.trim());
+      const jobIdToSearch = searchInput.trim();
+      setJobId(jobIdToSearch);
+      // Update URL to include job_id parameter
+      navigate(`/results?job_id=${encodeURIComponent(jobIdToSearch)}`);
+      loadJobData(jobIdToSearch);
     } else {
       setError('Please enter a job ID');
     }
@@ -121,6 +125,8 @@ const Results = () => {
     setResults(null);
     setError(null);
     setLoading(false);
+    // Clear URL parameters
+    navigate('/results');
   };
 
   // Poll for updates if job is still processing
