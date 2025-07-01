@@ -86,3 +86,7 @@ grade/.nuxt/
 .local/
 .profile
 .wget-hsts
+.npm/
+*.db
+nohup.out
+package-lock.json
