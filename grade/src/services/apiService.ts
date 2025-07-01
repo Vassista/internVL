@@ -1,9 +1,9 @@
 /**
- * API Service for InternVL
+ * API Service for Grade Genius
  * Handles communication with FastAPI backend
  */
 
-const API_BASE_URL = 'http://localhost:8000'; 
+const API_BASE_URL = 'http://localhost:8000'; // Change this for production
 
 export interface StudentAnswer {
   sn: number;
@@ -80,6 +80,36 @@ class ApiService {
       formData.append('job_name', jobName);
 
       const response = await fetch(`${API_BASE_URL}/upload/evaluation`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Upload failed: ${error}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Upload failed:', error);
+      throw error;
+    }
+  }
+
+  async uploadIndividualImages(
+    modelAnswer: File,
+    studentImages: File[],
+    jobName: string
+  ): Promise<UploadResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('model_answer', modelAnswer);
+      studentImages.forEach((file) => {
+        formData.append('student_images', file);
+      });
+      formData.append('job_name', jobName);
+
+      const response = await fetch(`${API_BASE_URL}/upload/individual`, {
         method: 'POST',
         body: formData,
       });
