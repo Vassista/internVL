@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useLocation } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -47,7 +47,8 @@ const StatusBadge = ({ status }: { status: string }) => {
 
 const Results = () => {
   const [searchParams] = useSearchParams();
-  const location = useLocation();  // Get job ID from URL parameters
+
+  // Get job ID from URL parameters
   const jobId = searchParams.get('job_id');
 
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
