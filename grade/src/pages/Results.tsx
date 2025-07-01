@@ -134,10 +134,15 @@ const Results = () => {
   const handleSearchInputChange = (value: string) => {
     setSearchInput(value);
 
+    // Clear error when user starts typing
+    if (error) {
+      setError(null);
+    }
+
     // If input looks like a job ID (UUID format), don't show suggestions
     const isUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-    if (!isUuidPattern) {
+    if (!isUuidPattern && value.length >= 2) {
       // Debounce search for job names
       const timeoutId = setTimeout(() => {
         searchJobSuggestions(value);
@@ -146,6 +151,8 @@ const Results = () => {
       return () => clearTimeout(timeoutId);
     } else {
       setShowSuggestions(false);
+      setSearchSuggestions([]);
+      setSearching(false);
     }
   };
 
@@ -208,12 +215,15 @@ const Results = () => {
         } catch (err) {
           console.error('Error searching jobs:', err);
           setError('Failed to search for jobs. Please try again.');
+          setSearchSuggestions([]);
+          setShowSuggestions(false);
         } finally {
           setSearching(false);
         }
       }
     } else {
       setError('Please enter a job ID or job name');
+      setSearching(false);
     }
   };
 
@@ -354,7 +364,7 @@ const Results = () => {
             </div>
           )}
 
-          {error && !loading && (
+          {error && !loading && !searching && (
             <Alert variant="destructive" className="mt-4">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
@@ -363,13 +373,13 @@ const Results = () => {
       </Card>
 
       {/* No Results Message */}
-      {!jobId && !loading && (
+      {!jobId && !loading && !searching && (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center py-8">
               <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No evaluation searched</h3>
-              <p className="text-gray-600">Enter a job ID above to view evaluation results</p>
+              <p className="text-gray-600">Enter a job ID or job name above to view evaluation results</p>
             </div>
           </CardContent>
         </Card>
