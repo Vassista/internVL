@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,9 +7,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { FileUp, X, Check, Archive, Play, Image, Images } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiService } from '@/services/apiService';
 
 const UploadFormDual = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [modelFile, setModelFile] = useState<File | null>(null);
   const [uploadMode, setUploadMode] = useState<'zip' | 'individual'>('zip');
   const [studentZipFile, setStudentZipFile] = useState<File | null>(null);
@@ -75,17 +78,7 @@ const UploadFormDual = () => {
     setProgress(0);
 
     try {
-      const formData = new FormData();
-      formData.append('model_answer', modelFile);
-      formData.append('job_name', jobName);
-
-      if (uploadMode === 'zip' && studentZipFile) {
-        formData.append('student_sheets', studentZipFile);
-      } else if (uploadMode === 'individual') {
-        studentFiles.forEach((file) => {
-          formData.append('student_images', file);
-        });
-      }
+      let result;
 
       // Simulate upload progress
       const progressInterval = setInterval(() => {
@@ -98,28 +91,26 @@ const UploadFormDual = () => {
         });
       }, 200);
 
-      const response = await fetch('http://localhost:8000/upload/evaluation', {
-        method: 'POST',
-        body: formData,
-      });
+      if (uploadMode === 'zip' && studentZipFile) {
+        result = await apiService.uploadEvaluation(modelFile, studentZipFile, jobName);
+      } else if (uploadMode === 'individual' && studentFiles.length > 0) {
+        // For individual files, we'll use the upload individual endpoint
+        result = await apiService.uploadIndividualImages(modelFile, studentFiles, jobName);
+      }
 
       clearInterval(progressInterval);
       setProgress(100);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Upload failed');
+      if (result) {
+        setJobId(result.job_id);
+        toast({
+          title: "Upload successful",
+          description: `${result.student_sheets_count} student sheets uploaded. Job ID: ${result.job_id}`,
+        });
+        setUploading(false);
+        setProcessing(true);
+        pollProcessingStatus(result.job_id);
       }
-
-      const result = await response.json();
-      setJobId(result.job_id);
-
-      toast({
-        title: "Upload successful",
-        description: `${result.student_sheets_count} student sheets uploaded. Job ID: ${result.job_id}`,
-      });
-
-      setUploading(false);
 
     } catch (error) {
       console.error('Upload error:', error);
@@ -134,39 +125,40 @@ const UploadFormDual = () => {
     }
   };
 
-  const pollProcessingStatus = async () => {
-    if (!jobId) return;
+  const pollProcessingStatus = async (currentJobId?: string) => {
+    const jobIdToUse = currentJobId || jobId;
+    if (!jobIdToUse) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/evaluation/${jobId}/status`);
+      const status = await apiService.getJobStatus(jobIdToUse);
+      setProcessingStatus(status);
 
-      if (response.ok) {
-        const status = await response.json();
-        setProcessingStatus(status);
+      if (status.status === 'completed' || status.status === 'failed') {
+        setProcessing(false);
 
-        if (status.status === 'completed' || status.status === 'failed') {
-          setProcessing(false);
-
-          if (status.status === 'completed') {
-            toast({
-              title: "Processing completed",
-              description: "Your evaluation is complete! Check the Results page.",
-            });
-          } else {
-            toast({
-              title: "Processing failed",
-              description: status.error_message || "An error occurred during processing",
-              variant: "destructive"
-            });
-          }
+        if (status.status === 'completed') {
+          toast({
+            title: "Processing completed",
+            description: "Your evaluation is complete! Redirecting to results...",
+          });
+          // Navigate to results page with job ID
+          setTimeout(() => {
+            navigate(`/results?job_id=${jobIdToUse}`);
+          }, 2000);
         } else {
-          // Continue polling
-          setTimeout(pollProcessingStatus, 3000);
+          toast({
+            title: "Processing failed",
+            description: status.error_message || "An error occurred during processing",
+            variant: "destructive"
+          });
         }
+      } else {
+        // Continue polling
+        setTimeout(() => pollProcessingStatus(jobIdToUse), 3000);
       }
     } catch (error) {
       console.error('Status polling error:', error);
-      setTimeout(pollProcessingStatus, 5000); // Retry after 5 seconds
+      setTimeout(() => pollProcessingStatus(jobIdToUse), 5000); // Retry after 5 seconds
     }
   };
 
@@ -371,6 +363,21 @@ const UploadFormDual = () => {
                   value={(processingStatus.processed_students / processingStatus.total_students) * 100}
                   className="w-full"
                 />
+              </div>
+            )}
+            {processingStatus.status === 'completed' && jobId && (
+              <div className="mt-3">
+                <Button
+                  onClick={() => navigate(`/results?job_id=${jobId}`)}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  View Results
+                </Button>
+              </div>
+            )}
+            {processingStatus.status === 'failed' && (
+              <div className="mt-3 text-red-600 text-sm">
+                Error: {processingStatus.error_message || 'Processing failed'}
               </div>
             )}
           </div>
