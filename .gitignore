@@ -46,6 +46,16 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
+# User/system files
+.bash_history
+.bash_logout
+.bashrc
+.config/
+.dotnet/
+.local/
+.profile
+.wget-hsts
+
 # Project specific files
 prod_codes/temp_uploads/
 prod_codes/test_imgs/
