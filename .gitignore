@@ -46,11 +46,14 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
+# Project specific files
+prod_codes/temp_uploads/
 prod_codes/test_imgs/
 prod_codes/*.zip
 prod_codes/test_results_*.json
 prod_codes/final_test_results_*.json
+prod_codes/*.db
+prod_codes/nohup.out
 
 # Model files (large files)
 *.bin
@@ -60,33 +63,28 @@ prod_codes/final_test_results_*.json
 models/
 checkpoints/
 
-# Logs
+# Logs and runtime files
 *.log
 logs/
+nohup.out
 
 # Environment variables
 .env
 .env.local
 .env.production
 
-# Node.js (for frontend)
+# Node.js (frontend)
 grade/node_modules/
 grade/dist/
 grade/build/
 grade/.next/
 grade/.nuxt/
-
-# System files
-.bash_history
-.bash_logout
-.bashrc
-.cache/
-.config/
-.dotnet/
-.local/
-.profile
-.wget-hsts
 .npm/
+
+# Database files
 *.db
-nohup.out
+*.sqlite
+*.sqlite3
+
+# Package lock files (optional - comment out if you want to track them)
 package-lock.json
