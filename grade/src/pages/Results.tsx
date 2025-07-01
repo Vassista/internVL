@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, RefreshCw, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Loader2, RefreshCw, CheckCircle, Clock, AlertCircle, Search, X } from 'lucide-react';
 import { apiService, EvaluationResults, JobStatus } from '@/services/apiService';
 import ResultsTableNew from '@/components/results/ResultsTableNew';
 
@@ -49,11 +50,13 @@ const Results = () => {
   const [searchParams] = useSearchParams();
 
   // Get job ID from URL parameters
-  const jobId = searchParams.get('job_id');
+  const urlJobId = searchParams.get('job_id');
 
+  const [jobId, setJobId] = useState<string>(urlJobId || '');
+  const [searchInput, setSearchInput] = useState<string>(urlJobId || '');
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [results, setResults] = useState<EvaluationResults | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Function to fetch job status and results
@@ -92,13 +95,33 @@ const Results = () => {
 
   // Load data when component mounts or jobId changes
   useEffect(() => {
-    if (jobId) {
-      loadJobData(jobId);
-    } else {
-      setLoading(false);
-      setError('No job ID provided');
+    if (urlJobId) {
+      setJobId(urlJobId);
+      setSearchInput(urlJobId);
+      loadJobData(urlJobId);
     }
-  }, [jobId]);
+  }, [urlJobId]);
+
+  // Handle search form submission
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchInput.trim()) {
+      setJobId(searchInput.trim());
+      loadJobData(searchInput.trim());
+    } else {
+      setError('Please enter a job ID');
+    }
+  };
+
+  // Clear results
+  const handleClear = () => {
+    setJobId('');
+    setSearchInput('');
+    setJobStatus(null);
+    setResults(null);
+    setError(null);
+    setLoading(false);
+  };
 
   // Poll for updates if job is still processing
   useEffect(() => {
@@ -134,21 +157,6 @@ const Results = () => {
     );
   }
 
-  // Render error state
-  if (error) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-        <Button onClick={handleRefresh} className="mt-4" variant="outline">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
   // Render main results UI
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
@@ -156,24 +164,77 @@ const Results = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Evaluation Results</h1>
-          {results && (
-            <p className="text-gray-600 mt-1">{results.job_name}</p>
-          )}
+          <p className="text-gray-600 mt-1">Search for evaluation results by job ID</p>
         </div>
         <div className="flex items-center gap-4">
           {jobStatus && <StatusBadge status={jobStatus.status} />}
-          <Button onClick={handleRefresh} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
+          {jobId && (
+            <Button onClick={handleRefresh} variant="outline" size="sm">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Search Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Search Results</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSearch} className="flex gap-4">
+            <div className="flex-1">
+              <Input
+                type="text"
+                placeholder="Enter job ID (e.g., 6129becb-22a2-481d-bc0e-10aaddbea718)"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <Button type="submit" disabled={loading}>
+              <Search className="h-4 w-4 mr-2" />
+              Search
+            </Button>
+            {(jobId || searchInput) && (
+              <Button type="button" variant="outline" onClick={handleClear}>
+                <X className="h-4 w-4 mr-2" />
+                Clear
+              </Button>
+            )}
+          </form>
+          {error && !loading && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* No Results Message */}
+      {!jobId && !loading && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-8">
+              <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No evaluation searched</h3>
+              <p className="text-gray-600">Enter a job ID above to view evaluation results</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Job Status Card */}
       {jobStatus && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Processing Status</CardTitle>
+            <CardTitle className="text-lg">
+              Processing Status
+              {results?.job_name && (
+                <span className="text-base font-normal text-gray-600 ml-2">- {results.job_name}</span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
