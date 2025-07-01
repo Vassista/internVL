@@ -39,6 +39,22 @@ export interface EvaluationResults {
   completed_at?: string;
 }
 
+export interface JobSearchResult {
+  job_id: string;
+  job_name: string;
+  status: string;
+  total_students: number;
+  processed_students: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface JobSearchResponse {
+  query: string | null;
+  total_found: number;
+  jobs: JobSearchResult[];
+}
+
 export interface JobStatus {
   job_id: string;
   status: string;
@@ -152,6 +168,25 @@ class ApiService {
       return await response.json();
     } catch (error) {
       console.error('Get results failed:', error);
+      throw error;
+    }
+  }
+
+  async searchJobs(query?: string): Promise<JobSearchResponse> {
+    try {
+      const url = query
+        ? `${API_BASE_URL}/jobs/search?query=${encodeURIComponent(query)}`
+        : `${API_BASE_URL}/jobs/search`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to search jobs: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Search jobs failed:', error);
       throw error;
     }
   }

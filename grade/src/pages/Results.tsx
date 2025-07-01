@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Loader2, RefreshCw, CheckCircle, Clock, AlertCircle, Search, X } from 'lucide-react';
-import { apiService, EvaluationResults, JobStatus } from '@/services/apiService';
+import { apiService, EvaluationResults, JobStatus, JobSearchResult } from '@/services/apiService';
 import ResultsTableNew from '@/components/results/ResultsTableNew';
 
 // Status badge component
@@ -55,6 +55,9 @@ const Results = () => {
 
   const [jobId, setJobId] = useState<string>(urlJobId || '');
   const [searchInput, setSearchInput] = useState<string>(urlJobId || '');
+  const [searchSuggestions, setSearchSuggestions] = useState<JobSearchResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+  const [searching, setSearching] = useState<boolean>(false);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [results, setResults] = useState<EvaluationResults | null>(null);
   const [loading, setLoading] = useState(false);
@@ -88,10 +91,72 @@ const Results = () => {
       }
     } catch (err) {
       console.error('Error loading job data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load evaluation data');
+      // Handle specific error cases
+      if (err instanceof Error) {
+        if (err.message.includes('404') || err.message.includes('Job not found')) {
+          setError(`Job not found: No evaluation job exists with ID "${id}". Please check the job ID and try again.`);
+        } else if (err.message.includes('400') || err.message.includes('not completed')) {
+          setError('Job is still processing. Please wait and try again later.');
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('Failed to load evaluation data. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  // Search for jobs by name to provide suggestions
+  const searchJobSuggestions = async (query: string) => {
+    if (query.length < 2) {
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const response = await apiService.searchJobs(query);
+      setSearchSuggestions(response.jobs);
+      setShowSuggestions(response.jobs.length > 0);
+    } catch (err) {
+      console.error('Error searching jobs:', err);
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Handle input change with debounced search
+  const handleSearchInputChange = (value: string) => {
+    setSearchInput(value);
+
+    // If input looks like a job ID (UUID format), don't show suggestions
+    const isUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+    if (!isUuidPattern) {
+      // Debounce search for job names
+      const timeoutId = setTimeout(() => {
+        searchJobSuggestions(value);
+      }, 300);
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  // Handle suggestion selection
+  const handleSuggestionSelect = (suggestion: JobSearchResult) => {
+    setSearchInput(suggestion.job_name);
+    setJobId(suggestion.job_id);
+    setShowSuggestions(false);
+    // Update URL and load data
+    navigate(`/results?job_id=${encodeURIComponent(suggestion.job_id)}`);
+    loadJobData(suggestion.job_id);
   };
 
   // Load data when component mounts or jobId changes
@@ -104,16 +169,51 @@ const Results = () => {
   }, [urlJobId]);
 
   // Handle search form submission
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
-      const jobIdToSearch = searchInput.trim();
-      setJobId(jobIdToSearch);
-      // Update URL to include job_id parameter
-      navigate(`/results?job_id=${encodeURIComponent(jobIdToSearch)}`);
-      loadJobData(jobIdToSearch);
+      const searchValue = searchInput.trim();
+      setSearching(true);
+
+      // Check if input is a job ID (UUID format) or job name
+      const isUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchValue);
+
+      if (isUuidPattern) {
+        // Direct job ID search
+        setJobId(searchValue);
+        navigate(`/results?job_id=${encodeURIComponent(searchValue)}`);
+        loadJobData(searchValue);
+        setSearching(false);
+      } else {
+        // Search by job name
+        try {
+          const response = await apiService.searchJobs(searchValue);
+          if (response.jobs.length === 1) {
+            // Exact match found
+            const job = response.jobs[0];
+            setJobId(job.job_id);
+            navigate(`/results?job_id=${encodeURIComponent(job.job_id)}`);
+            loadJobData(job.job_id);
+          } else if (response.jobs.length > 1) {
+            // Multiple matches - show suggestions
+            setSearchSuggestions(response.jobs);
+            setShowSuggestions(true);
+            setError(`Found ${response.jobs.length} jobs matching "${searchValue}". Please select one from the dropdown.`);
+          } else {
+            // No matches found
+            setError(`No jobs found matching "${searchValue}". Please check the job name or try entering a job ID.`);
+            setSearchSuggestions([]);
+            setShowSuggestions(false);
+          }
+        } catch (err) {
+          console.error('Error searching jobs:', err);
+          setError('Failed to search for jobs. Please try again.');
+        } finally {
+          setSearching(false);
+        }
+      }
     } else {
-      setError('Please enter a job ID');
+      setError('Please enter a job ID or job name');
     }
   };
 
@@ -121,6 +221,9 @@ const Results = () => {
   const handleClear = () => {
     setJobId('');
     setSearchInput('');
+    setSearchSuggestions([]);
+    setShowSuggestions(false);
+    setSearching(false);
     setJobStatus(null);
     setResults(null);
     setError(null);
@@ -190,18 +293,47 @@ const Results = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSearch} className="flex gap-4">
-            <div className="flex-1">
+            <div className="flex-1 relative">
               <Input
                 type="text"
-                placeholder="Enter job ID (e.g., 6129becb-22a2-481d-bc0e-10aaddbea718)"
+                placeholder="Enter job ID or job name (e.g., 'Math Exam 2024' or '6129becb-22a2-481d-bc0e-10aaddbea718')"
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                onChange={(e) => handleSearchInputChange(e.target.value)}
+                onFocus={() => {
+                  if (searchSuggestions.length > 0) {
+                    setShowSuggestions(true);
+                  }
+                }}
+                onBlur={() => {
+                  // Delay hiding suggestions to allow for clicks
+                  setTimeout(() => setShowSuggestions(false), 200);
+                }}
                 className="w-full"
               />
+
+              {/* Search Suggestions Dropdown */}
+              {showSuggestions && searchSuggestions.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {searchSuggestions.map((suggestion) => (
+                    <div
+                      key={suggestion.job_id}
+                      className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      onClick={() => handleSuggestionSelect(suggestion)}
+                    >
+                      <div className="font-medium text-sm">{suggestion.job_name}</div>
+                      <div className="text-xs text-gray-500 flex items-center gap-2">
+                        <StatusBadge status={suggestion.status} />
+                        <span>{suggestion.total_students} students</span>
+                        <span>{new Date(suggestion.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || searching}>
               <Search className="h-4 w-4 mr-2" />
-              Search
+              {searching ? 'Searching...' : 'Search'}
             </Button>
             {(jobId || searchInput) && (
               <Button type="button" variant="outline" onClick={handleClear}>
@@ -210,6 +342,18 @@ const Results = () => {
               </Button>
             )}
           </form>
+
+          {/* Search Progress Bar */}
+          {searching && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Searching for jobs...</span>
+              </div>
+              <Progress value={undefined} className="w-full h-2" />
+            </div>
+          )}
+
           {error && !loading && (
             <Alert variant="destructive" className="mt-4">
               <AlertDescription>{error}</AlertDescription>

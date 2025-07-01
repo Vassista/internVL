@@ -354,6 +354,40 @@ async def get_evaluation_results(job_id: str):
         completed_at=job.get("completed_at")
     )
 
+@app.get("/jobs/search")
+async def search_jobs(query: Optional[str] = None):
+    """Search for jobs by name or list all jobs"""
+
+    matching_jobs = []
+
+    for job_id, job_data in jobs_storage.items():
+        job_info = {
+            "job_id": job_id,
+            "job_name": job_data.get("job_name", "Unnamed Job"),
+            "status": job_data.get("status", "unknown"),
+            "total_students": job_data.get("total_students", 0),
+            "processed_students": job_data.get("processed_students", 0),
+            "created_at": job_data.get("created_at", "").isoformat() if job_data.get("created_at") else "",
+            "completed_at": job_data.get("completed_at", "").isoformat() if job_data.get("completed_at") else None,
+        }
+
+        # If no query, return all jobs
+        if not query:
+            matching_jobs.append(job_info)
+        else:
+            # Search by job name (case-insensitive)
+            if query.lower() in job_data.get("job_name", "").lower():
+                matching_jobs.append(job_info)
+
+    # Sort by creation date (newest first)
+    matching_jobs.sort(key=lambda x: x["created_at"], reverse=True)
+
+    return {
+        "query": query,
+        "total_found": len(matching_jobs),
+        "jobs": matching_jobs
+    }
+
 async def process_evaluation_job(job_id: str):
     """
     Background task to process the evaluation job
