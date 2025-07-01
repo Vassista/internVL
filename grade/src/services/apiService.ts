@@ -178,7 +178,15 @@ class ApiService {
         ? `${API_BASE_URL}/jobs/search?query=${encodeURIComponent(query)}`
         : `${API_BASE_URL}/jobs/search`;
 
-      const response = await fetch(url);
+      // Create an AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch(url, {
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`Failed to search jobs: ${response.statusText}`);
@@ -187,6 +195,9 @@ class ApiService {
       return await response.json();
     } catch (error) {
       console.error('Search jobs failed:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Search request timed out. Please try again.');
+      }
       throw error;
     }
   }

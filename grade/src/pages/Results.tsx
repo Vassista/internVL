@@ -125,6 +125,10 @@ const Results = () => {
       console.error('Error searching jobs:', err);
       setSearchSuggestions([]);
       setShowSuggestions(false);
+      // Show error only if it's a connection issue, not just no results
+      if (err instanceof Error && (err.message.includes('Failed to fetch') || err.message.includes('timed out'))) {
+        setError('Unable to connect to server. Please check if the API server is running.');
+      }
     } finally {
       setSearching(false);
     }
@@ -214,7 +218,11 @@ const Results = () => {
           }
         } catch (err) {
           console.error('Error searching jobs:', err);
-          setError('Failed to search for jobs. Please try again.');
+          if (err instanceof Error && (err.message.includes('Failed to fetch') || err.message.includes('timed out'))) {
+            setError('Unable to connect to server. Please check if the API server is running.');
+          } else {
+            setError('Failed to search for jobs. Please try again.');
+          }
           setSearchSuggestions([]);
           setShowSuggestions(false);
         } finally {
