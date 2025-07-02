@@ -65,6 +65,11 @@ const Results = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // New state for all evaluations
+  const [allEvaluations, setAllEvaluations] = useState<JobSearchResult[]>([]);
+  const [loadingAllEvaluations, setLoadingAllEvaluations] = useState<boolean>(false);
+  const [allEvaluationsError, setAllEvaluationsError] = useState<string | null>(null);
+
   // Function to fetch job status and results
   const loadJobData = async (id: string) => {
     if (!id) {
@@ -121,6 +126,21 @@ const Results = () => {
       // Don't show error for suggestions, just silently fail
     } finally {
       setLoadingSuggestions(false);
+    }
+  };
+
+  // Load all evaluations for the user
+  const loadAllEvaluations = async () => {
+    setLoadingAllEvaluations(true);
+    setAllEvaluationsError(null);
+    try {
+      const response = await apiService.getAllEvaluations(20);
+      setAllEvaluations(response.jobs);
+    } catch (err) {
+      console.error('Error loading all evaluations:', err);
+      setAllEvaluationsError(err instanceof Error ? err.message : 'Failed to load evaluations');
+    } finally {
+      setLoadingAllEvaluations(false);
     }
   };
 
@@ -193,6 +213,11 @@ const Results = () => {
   useEffect(() => {
     // Load initial suggestions on mount
     loadInitialSuggestions();
+
+    // Load all evaluations if no specific job is being viewed
+    if (!urlJobId) {
+      loadAllEvaluations();
+    }
 
     if (urlJobId) {
       setJobId(urlJobId);
@@ -271,6 +296,8 @@ const Results = () => {
     setLoading(false);
     // Clear URL parameters
     navigate('/results');
+    // Reload all evaluations when clearing
+    loadAllEvaluations();
   };
 
   // Poll for updates if job is still processing
@@ -440,15 +467,85 @@ const Results = () => {
         </CardContent>
       </Card>
 
-      {/* No Results Message */}
+      {/* All Evaluations or No Results Message */}
       {!jobId && !loading && !searching && (
         <Card>
           <CardContent className="pt-6">
-            <div className="text-center py-8">
-              <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No evaluation searched</h3>
-              <p className="text-gray-600">Enter a job ID or job name above to view evaluation results</p>
-            </div>
+            {loadingAllEvaluations ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-12 w-12 text-gray-400 mx-auto mb-4 animate-spin" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Loading evaluations...</h3>
+                <p className="text-gray-600">Please wait while we fetch your evaluations</p>
+              </div>
+            ) : allEvaluationsError ? (
+              <div className="text-center py-8">
+                <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Error loading evaluations</h3>
+                <p className="text-gray-600 mb-4">{allEvaluationsError}</p>
+                <Button onClick={loadAllEvaluations} variant="outline">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Try Again
+                </Button>
+              </div>
+            ) : allEvaluations.length === 0 ? (
+              <div className="text-center py-8">
+                <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No evaluations found</h3>
+                <p className="text-gray-600">You haven't created any evaluations yet. Upload answer sheets to get started.</p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-medium text-gray-900">Your Evaluations</h3>
+                  <Button onClick={loadAllEvaluations} variant="outline" size="sm">
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  {allEvaluations.map((evaluation) => (
+                    <div
+                      key={evaluation.job_id}
+                      className="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => {
+                        setJobId(evaluation.job_id);
+                        setSearchInput(evaluation.job_id);
+                        navigate(`/results?job_id=${encodeURIComponent(evaluation.job_id)}`);
+                        loadJobData(evaluation.job_id);
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h4 className="font-medium text-gray-900">{evaluation.job_name}</h4>
+                            <StatusBadge status={evaluation.status} />
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                            <span>
+                              Students: {evaluation.processed_students} / {evaluation.total_students}
+                            </span>
+                            <span>
+                              Created: {new Date(evaluation.created_at).toLocaleDateString()}
+                            </span>
+                            {evaluation.completed_at && (
+                              <span>
+                                Completed: {new Date(evaluation.completed_at).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-gray-500 mb-1">Job ID</div>
+                          <div className="text-xs font-mono text-gray-700">
+                            {evaluation.job_id.slice(0, 8)}...
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
