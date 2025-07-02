@@ -461,7 +461,8 @@ async def get_dashboard_stats():
     """Get dashboard statistics"""
 
     total_evaluations = len(jobs_storage)
-    pending_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "processing")
+    pending_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "pending")
+    processing_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "processing")
     completed_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "completed")
     failed_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "failed")
 
@@ -485,7 +486,7 @@ async def get_dashboard_stats():
 
     return {
         "total_evaluations": total_evaluations,
-        "pending_evaluations": pending_evaluations,
+        "pending_evaluations": pending_evaluations + processing_evaluations,  # Combine pending + processing
         "completed_evaluations": completed_evaluations,
         "failed_evaluations": failed_evaluations,
         "total_students_processed": total_students_processed,
