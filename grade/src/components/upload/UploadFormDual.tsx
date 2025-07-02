@@ -270,9 +270,26 @@ const UploadFormDual = () => {
     } catch (error) {
       console.error('Status polling error:', error);
 
-      if (error instanceof Error && error.name === 'AbortError') {
-        setTimeout(() => pollProcessingStatus(jobIdToUse, consecutiveErrors), 5000);
-        return;
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          setTimeout(() => pollProcessingStatus(jobIdToUse, consecutiveErrors), 5000);
+          return;
+        }
+
+        if (error.message.includes('Failed to get job status: Not Found') ||
+            error.message.includes('404')) {
+          setCurrentPhase('failed');
+          setProcessing(false);
+          setStatusMessage('❌ Job not found on server');
+          clearJobState();
+
+          toast({
+            title: "Job not found",
+            description: "The evaluation job no longer exists on the server. It may have been deleted or expired.",
+            variant: "destructive"
+          });
+          return;
+        }
       }
 
       const newConsecutiveErrors = consecutiveErrors + 1;
