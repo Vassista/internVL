@@ -25,6 +25,44 @@ const UploadFormDual = () => {
   const [processingStatus, setProcessingStatus] = useState<any>(null);
   const [currentPhase, setCurrentPhase] = useState<'idle' | 'uploading' | 'processing' | 'completed' | 'failed'>('idle');
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [uploadRetryCount, setUploadRetryCount] = useState(0);
+  const [connectionError, setConnectionError] = useState(false);
+
+  // Persist job state to localStorage
+  const saveJobState = (jobData: {
+    jobId: string;
+    jobName: string;
+    phase: string;
+    timestamp: number;
+  }) => {
+    localStorage.setItem('currentEvaluationJob', JSON.stringify(jobData));
+  };
+
+  // Load job state from localStorage
+  const loadJobState = () => {
+    try {
+      const savedJob = localStorage.getItem('currentEvaluationJob');
+      if (savedJob) {
+        const jobData = JSON.parse(savedJob);
+        // Only restore if job is less than 24 hours old
+        const hoursSinceCreation = (Date.now() - jobData.timestamp) / (1000 * 60 * 60);
+        if (hoursSinceCreation < 24) {
+          return jobData;
+        } else {
+          localStorage.removeItem('currentEvaluationJob');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading job state:', error);
+      localStorage.removeItem('currentEvaluationJob');
+    }
+    return null;
+  };
+
+  // Clear job state
+  const clearJobState = () => {
+    localStorage.removeItem('currentEvaluationJob');
+  };
 
   const handleModelFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -80,6 +118,7 @@ const UploadFormDual = () => {
     setCurrentPhase('uploading');
     setUploading(true);
     setProgress(0);
+    setConnectionError(false);
     setStatusMessage('Preparing files for upload...');
 
     try {
@@ -106,18 +145,55 @@ const UploadFormDual = () => {
         }
       }, 400);
 
-      if (uploadMode === 'zip' && studentZipFile) {
-        result = await apiService.uploadEvaluation(modelFile, studentZipFile, jobName);
-      } else if (uploadMode === 'individual' && studentFiles.length > 0) {
-        result = await apiService.uploadIndividualImages(modelFile, studentFiles, jobName);
+      // Attempt upload with retry logic
+      let uploadSuccess = false;
+      let lastError = null;
+
+      for (let attempt = 1; attempt <= 3 && !uploadSuccess; attempt++) {
+        try {
+          setUploadRetryCount(attempt - 1);
+
+          if (attempt > 1) {
+            setStatusMessage(`Upload attempt ${attempt}/3...`);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+          }
+
+          if (uploadMode === 'zip' && studentZipFile) {
+            result = await apiService.uploadEvaluation(modelFile, studentZipFile, jobName);
+          } else if (uploadMode === 'individual' && studentFiles.length > 0) {
+            result = await apiService.uploadIndividualImages(modelFile, studentFiles, jobName);
+          }
+
+          uploadSuccess = true;
+        } catch (error) {
+          lastError = error;
+          console.error(`Upload attempt ${attempt} failed:`, error);
+
+          if (attempt < 3) {
+            setStatusMessage(`Upload attempt ${attempt} failed, retrying...`);
+          }
+        }
       }
 
       clearInterval(progressInterval);
+
+      if (!uploadSuccess) {
+        throw lastError;
+      }
+
       setProgress(100);
       setStatusMessage('Upload completed successfully!');
 
       if (result) {
+        const jobData = {
+          jobId: result.job_id,
+          jobName: jobName,
+          phase: 'processing',
+          timestamp: Date.now()
+        };
+
         setJobId(result.job_id);
+        saveJobState(jobData);
         setCurrentPhase('processing');
         setStatusMessage('Starting evaluation process...');
 
@@ -136,11 +212,12 @@ const UploadFormDual = () => {
       setCurrentPhase('failed');
       setUploading(false);
       setProgress(0);
-      setStatusMessage('Upload failed');
+      setConnectionError(true);
+      setStatusMessage(`Upload failed after ${uploadRetryCount + 1} attempts`);
 
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "An error occurred during upload",
+        description: error instanceof Error ? error.message : "An error occurred during upload. Try refreshing the page and uploading again.",
         variant: "destructive"
       });
     }
@@ -153,11 +230,14 @@ const UploadFormDual = () => {
     try {
       const status = await apiService.getJobStatus(jobIdToUse);
       setProcessingStatus(status);
+      setConnectionError(false);
 
       // Update status message based on processing state
       if (status.status === 'pending') {
+        setCurrentPhase('processing');
         setStatusMessage('Evaluation queued, waiting to start...');
       } else if (status.status === 'processing') {
+        setCurrentPhase('processing');
         const progress = status.total_students > 0
           ? Math.round((status.processed_students / status.total_students) * 100)
           : 0;
@@ -170,21 +250,18 @@ const UploadFormDual = () => {
         setCurrentPhase('completed');
         setProcessing(false);
         setStatusMessage('🎉 Evaluation completed successfully!');
+        clearJobState();
 
         toast({
           title: "Evaluation completed",
-          description: "Your evaluation is complete! Redirecting to results...",
+          description: "Your evaluation is complete! You can view results now.",
         });
-
-        // Navigate to results page with job ID
-        setTimeout(() => {
-          navigate(`/results?job_id=${jobIdToUse}`);
-        }, 2000);
 
       } else if (status.status === 'failed') {
         setCurrentPhase('failed');
         setProcessing(false);
         setStatusMessage('❌ Evaluation failed');
+        clearJobState();
 
         toast({
           title: "Evaluation failed",
@@ -193,11 +270,12 @@ const UploadFormDual = () => {
         });
       } else {
         // Continue polling for pending/processing states
-        setTimeout(() => pollProcessingStatus(jobIdToUse), 3000);
+        setTimeout(() => pollProcessingStatus(jobIdToUse), 2000); // Poll every 2 seconds
       }
     } catch (error) {
       console.error('Status polling error:', error);
-      setStatusMessage('Connection issue, retrying...');
+      setConnectionError(true);
+      setStatusMessage('Connection issue, retrying status check...');
       // Retry after 5 seconds on error
       setTimeout(() => pollProcessingStatus(jobIdToUse), 5000);
     }
@@ -215,14 +293,37 @@ const UploadFormDual = () => {
     setProcessing(false);
     setCurrentPhase('idle');
     setStatusMessage('');
+    setUploadRetryCount(0);
+    setConnectionError(false);
+    clearJobState();
   };
 
-  // Effect to handle job ID from URL or continue polling if there's an active job
+  // Load persisted job state on component mount
   useEffect(() => {
-    if (jobId && processing) {
+    const savedJob = loadJobState();
+    if (savedJob) {
+      setJobId(savedJob.jobId);
+      setJobName(savedJob.jobName);
+      setCurrentPhase(savedJob.phase as any);
+      setProcessing(true);
+      setStatusMessage('Resuming evaluation status...');
+
+      toast({
+        title: "Resuming evaluation",
+        description: `Found ongoing evaluation: ${savedJob.jobName}`,
+      });
+
+      // Start polling for the saved job
+      pollProcessingStatus(savedJob.jobId);
+    }
+  }, []);
+
+  // Effect to handle job ID polling
+  useEffect(() => {
+    if (jobId && processing && currentPhase !== 'completed' && currentPhase !== 'failed') {
       pollProcessingStatus(jobId);
     }
-  }, [jobId, processing]);
+  }, [jobId, processing, currentPhase]);
 
   return (
     <Card className="w-full max-w-4xl mx-auto">
@@ -400,14 +501,24 @@ const UploadFormDual = () => {
                     <Badge variant="secondary" className="bg-blue-100 text-blue-700">
                       Uploading
                     </Badge>
+                    {uploadRetryCount > 0 && (
+                      <Badge variant="outline" className="text-xs">
+                        Retry {uploadRetryCount}
+                      </Badge>
+                    )}
                   </>
                 )}
                 {currentPhase === 'processing' && (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
                     <Badge variant="secondary" className="bg-orange-100 text-orange-700">
-                      Processing
+                      {processingStatus?.status === 'pending' ? 'Pending' : 'Processing'}
                     </Badge>
+                    {connectionError && (
+                      <Badge variant="outline" className="text-xs text-yellow-600">
+                        Connection Issue
+                      </Badge>
+                    )}
                   </>
                 )}
                 {currentPhase === 'completed' && (
@@ -433,6 +544,11 @@ const UploadFormDual = () => {
             {statusMessage && (
               <div className="text-center">
                 <p className="text-sm text-gray-600">{statusMessage}</p>
+                {connectionError && (
+                  <p className="text-xs text-yellow-600 mt-1">
+                    ⚠️ Having trouble connecting to server. Will keep trying...
+                  </p>
+                )}
               </div>
             )}
 
@@ -507,13 +623,35 @@ const UploadFormDual = () => {
 
             {/* Error state */}
             {currentPhase === 'failed' && (
-              <div className="text-center space-y-2">
+              <div className="text-center space-y-3">
                 <div className="text-red-600 text-sm">
                   {processingStatus?.error_message || 'An error occurred during processing'}
                 </div>
-                <Button variant="outline" onClick={resetForm}>
-                  Try Again
-                </Button>
+                {connectionError && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                    <p className="text-sm text-yellow-800">
+                      💡 <strong>Upload Tip:</strong> If uploads keep failing, try:
+                    </p>
+                    <ul className="text-xs text-yellow-700 mt-2 space-y-1">
+                      <li>• Refresh the page and try again</li>
+                      <li>• Check your internet connection</li>
+                      <li>• Ensure the API server is running</li>
+                      <li>• Try smaller file sizes</li>
+                    </ul>
+                  </div>
+                )}
+                <div className="flex justify-center space-x-2">
+                  <Button variant="outline" onClick={resetForm}>
+                    Try Again
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => window.location.reload()}
+                    className="text-blue-600"
+                  >
+                    Refresh Page
+                  </Button>
+                </div>
               </div>
             )}
           </div>
