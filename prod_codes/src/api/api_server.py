@@ -354,39 +354,196 @@ async def get_evaluation_results(job_id: str):
         completed_at=job.get("completed_at")
     )
 
-@app.get("/jobs/search")
-async def search_jobs(query: Optional[str] = None):
-    """Search for jobs by name or list all jobs"""
+@app.get("/jobs/suggestions")
+async def get_job_suggestions(limit: int = 10):
+    """Get recent job suggestions for search autocomplete"""
 
-    matching_jobs = []
+    suggestions = []
 
+    # Get all jobs sorted by creation date (newest first)
+    all_jobs = []
     for job_id, job_data in jobs_storage.items():
-        job_info = {
+        all_jobs.append((job_id, job_data))
+
+    # Sort by creation date (newest first)
+    all_jobs.sort(key=lambda x: x[1].get("created_at", datetime.min), reverse=True)
+
+    # Extract recent jobs with essential info for suggestions
+    for job_id, job_data in all_jobs[:limit]:
+        suggestion = {
             "job_id": job_id,
             "job_name": job_data.get("job_name", "Unnamed Job"),
             "status": job_data.get("status", "unknown"),
             "total_students": job_data.get("total_students", 0),
-            "processed_students": job_data.get("processed_students", 0),
             "created_at": job_data.get("created_at", "").isoformat() if job_data.get("created_at") else "",
-            "completed_at": job_data.get("completed_at", "").isoformat() if job_data.get("completed_at") else None,
         }
+        suggestions.append(suggestion)
 
-        # If no query, return all jobs
-        if not query:
+    return {
+        "suggestions": suggestions,
+        "total": len(suggestions)
+    }
+
+@app.get("/jobs/search")
+async def search_jobs(query: Optional[str] = None, limit: int = 20):
+    """Search for jobs by name or list all jobs with improved performance"""
+
+    matching_jobs = []
+
+    # If no query, return recent jobs (limit to avoid overwhelming)
+    if not query:
+        all_jobs = []
+        for job_id, job_data in jobs_storage.items():
+            all_jobs.append((job_id, job_data))
+
+        # Sort by creation date (newest first) and limit
+        all_jobs.sort(key=lambda x: x[1].get("created_at", datetime.min), reverse=True)
+
+        for job_id, job_data in all_jobs[:limit]:
+            job_info = {
+                "job_id": job_id,
+                "job_name": job_data.get("job_name", "Unnamed Job"),
+                "status": job_data.get("status", "unknown"),
+                "total_students": job_data.get("total_students", 0),
+                "processed_students": job_data.get("processed_students", 0),
+                "created_at": job_data.get("created_at", "").isoformat() if job_data.get("created_at") else "",
+                "completed_at": job_data.get("completed_at", "").isoformat() if job_data.get("completed_at") else None,
+            }
             matching_jobs.append(job_info)
-        else:
-            # Search by job name (case-insensitive)
-            if query.lower() in job_data.get("job_name", "").lower():
-                matching_jobs.append(job_info)
+    else:
+        # Search by job name (case-insensitive) with fuzzy matching
+        query_lower = query.lower()
+        scored_jobs = []
 
-    # Sort by creation date (newest first)
-    matching_jobs.sort(key=lambda x: x["created_at"], reverse=True)
+        for job_id, job_data in jobs_storage.items():
+            job_name = job_data.get("job_name", "").lower()
+
+            # Calculate relevance score
+            score = 0
+            if query_lower == job_name:
+                score = 100  # Exact match
+            elif job_name.startswith(query_lower):
+                score = 90  # Starts with query
+            elif query_lower in job_name:
+                score = 80  # Contains query
+            elif any(word in job_name for word in query_lower.split()):
+                score = 70  # Contains any word from query
+
+            if score > 0:
+                job_info = {
+                    "job_id": job_id,
+                    "job_name": job_data.get("job_name", "Unnamed Job"),
+                    "status": job_data.get("status", "unknown"),
+                    "total_students": job_data.get("total_students", 0),
+                    "processed_students": job_data.get("processed_students", 0),
+                    "created_at": job_data.get("created_at", "").isoformat() if job_data.get("created_at") else "",
+                    "completed_at": job_data.get("completed_at", "").isoformat() if job_data.get("completed_at") else None,
+                    "_relevance_score": score
+                }
+                scored_jobs.append(job_info)
+
+        # Sort by relevance score first, then by creation date
+        scored_jobs.sort(key=lambda x: (x["_relevance_score"], x["created_at"]), reverse=True)
+
+        # Remove the internal score field and limit results
+        for job in scored_jobs[:limit]:
+            del job["_relevance_score"]
+            matching_jobs.append(job)
 
     return {
         "query": query,
         "total_found": len(matching_jobs),
         "jobs": matching_jobs
     }
+
+@app.get("/dashboard/stats")
+async def get_dashboard_stats():
+    """Get dashboard statistics"""
+
+    total_evaluations = len(jobs_storage)
+    pending_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "processing")
+    completed_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "completed")
+    failed_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "failed")
+
+    # Calculate total students processed and average score
+    total_students_processed = 0
+    total_score_sum = 0
+    total_scores_count = 0
+
+    for job in jobs_storage.values():
+        if job.get("status") == "completed" and "results" in job:
+            job_students = len(job["results"])
+            total_students_processed += job_students
+
+            # Calculate average score for this job
+            for result in job["results"]:
+                if "percentage" in result:
+                    total_score_sum += result["percentage"]
+                    total_scores_count += 1
+
+    average_score = total_score_sum / total_scores_count if total_scores_count > 0 else 0.0
+
+    return {
+        "total_evaluations": total_evaluations,
+        "pending_evaluations": pending_evaluations,
+        "completed_evaluations": completed_evaluations,
+        "failed_evaluations": failed_evaluations,
+        "total_students_processed": total_students_processed,
+        "average_score": round(average_score, 1)
+    }
+
+@app.get("/dashboard/recent")
+async def get_recent_evaluations(limit: int = 10):
+    """Get recent evaluations for dashboard"""
+
+    recent_evaluations = []
+
+    # Get all completed jobs sorted by completion time
+    completed_jobs = []
+    for job_id, job in jobs_storage.items():
+        if job.get("status") == "completed" and "results" in job:
+            completed_jobs.append((job_id, job))
+
+    # Sort by completed_at timestamp (newest first)
+    completed_jobs.sort(key=lambda x: x[1].get("completed_at", datetime.min), reverse=True)
+
+    # Extract recent evaluations
+    for job_id, job in completed_jobs:
+        job_name = job.get("job_name", "Unnamed Job")
+        completed_at = job.get("completed_at")
+        created_at = job.get("created_at")
+
+        for result in job.get("results", []):
+            if len(recent_evaluations) >= limit:
+                break
+
+            if hasattr(result, 'roll_number'):
+                roll_number = result.roll_number
+                score = result.score
+                total_questions = result.total_questions
+                percentage = result.percentage
+            else:
+                roll_number = result.get("roll_number", "Unknown")
+                score = result.get("score", 0)
+                total_questions = result.get("total_questions", 0)
+                percentage = result.get("percentage", 0)
+
+            recent_evaluations.append({
+                "job_id": job_id,
+                "job_name": job_name,
+                "roll_number": roll_number,
+                "score": score,
+                "total_questions": total_questions,
+                "percentage": percentage,
+                "status": "completed",
+                "created_at": created_at.isoformat() if created_at else "",
+                "completed_at": completed_at.isoformat() if completed_at else None
+            })
+
+        if len(recent_evaluations) >= limit:
+            break
+
+    return recent_evaluations
 
 async def process_evaluation_job(job_id: str):
     """
