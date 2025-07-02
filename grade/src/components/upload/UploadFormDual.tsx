@@ -28,7 +28,6 @@ const UploadFormDual = () => {
   const [uploadRetryCount, setUploadRetryCount] = useState(0);
   const [connectionError, setConnectionError] = useState(false);
 
-  // Persist job state to localStorage
   const saveJobState = (jobData: {
     jobId: string;
     jobName: string;
@@ -38,13 +37,11 @@ const UploadFormDual = () => {
     localStorage.setItem('currentEvaluationJob', JSON.stringify(jobData));
   };
 
-  // Load job state from localStorage
   const loadJobState = () => {
     try {
       const savedJob = localStorage.getItem('currentEvaluationJob');
       if (savedJob) {
         const jobData = JSON.parse(savedJob);
-        // Only restore if job is less than 24 hours old
         const hoursSinceCreation = (Date.now() - jobData.timestamp) / (1000 * 60 * 60);
         if (hoursSinceCreation < 24) {
           return jobData;
@@ -59,7 +56,6 @@ const UploadFormDual = () => {
     return null;
   };
 
-  // Clear job state
   const clearJobState = () => {
     localStorage.removeItem('currentEvaluationJob');
   };
@@ -124,7 +120,6 @@ const UploadFormDual = () => {
     try {
       let result;
 
-      // Enhanced upload progress simulation
       const progressSteps = [
         { progress: 10, message: 'Validating files...' },
         { progress: 25, message: 'Uploading model answer...' },
@@ -145,7 +140,6 @@ const UploadFormDual = () => {
         }
       }, 400);
 
-      // Attempt upload with retry logic
       let uploadSuccess = false;
       let lastError = null;
 
@@ -155,7 +149,7 @@ const UploadFormDual = () => {
 
           if (attempt > 1) {
             setStatusMessage(`Upload attempt ${attempt}/3...`);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
 
           if (uploadMode === 'zip' && studentZipFile) {
@@ -204,7 +198,7 @@ const UploadFormDual = () => {
 
         setUploading(false);
         setProcessing(true);
-        pollProcessingStatus(result.job_id);
+        pollProcessingStatus(result.job_id, 0);
       }
 
     } catch (error) {
@@ -223,16 +217,18 @@ const UploadFormDual = () => {
     }
   };
 
-  const pollProcessingStatus = async (currentJobId?: string) => {
+  const pollProcessingStatus = async (currentJobId?: string, consecutiveErrors = 0) => {
     const jobIdToUse = currentJobId || jobId;
     if (!jobIdToUse) return;
 
     try {
       const status = await apiService.getJobStatus(jobIdToUse);
       setProcessingStatus(status);
-      setConnectionError(false);
 
-      // Update status message based on processing state
+      if (consecutiveErrors > 0) {
+        setConnectionError(false);
+      }
+
       if (status.status === 'pending') {
         setCurrentPhase('processing');
         setStatusMessage('Evaluation queued, waiting to start...');
@@ -269,15 +265,24 @@ const UploadFormDual = () => {
           variant: "destructive"
         });
       } else {
-        // Continue polling for pending/processing states
-        setTimeout(() => pollProcessingStatus(jobIdToUse), 2000); // Poll every 2 seconds
+        setTimeout(() => pollProcessingStatus(jobIdToUse, 0), 3000);
       }
     } catch (error) {
       console.error('Status polling error:', error);
-      setConnectionError(true);
-      setStatusMessage('Connection issue, retrying status check...');
-      // Retry after 5 seconds on error
-      setTimeout(() => pollProcessingStatus(jobIdToUse), 5000);
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        setTimeout(() => pollProcessingStatus(jobIdToUse, consecutiveErrors), 5000);
+        return;
+      }
+
+      const newConsecutiveErrors = consecutiveErrors + 1;
+      if (newConsecutiveErrors >= 2) {
+        setConnectionError(true);
+        setStatusMessage('Connection issue, retrying status check...');
+      }
+
+      const retryDelay = Math.min(5000 * Math.pow(1.5, Math.min(newConsecutiveErrors - 1, 3)), 15000);
+      setTimeout(() => pollProcessingStatus(jobIdToUse, newConsecutiveErrors), retryDelay);
     }
   };
 
@@ -298,7 +303,6 @@ const UploadFormDual = () => {
     clearJobState();
   };
 
-  // Load persisted job state on component mount
   useEffect(() => {
     const savedJob = loadJobState();
     if (savedJob) {
@@ -313,15 +317,13 @@ const UploadFormDual = () => {
         description: `Found ongoing evaluation: ${savedJob.jobName}`,
       });
 
-      // Start polling for the saved job
-      pollProcessingStatus(savedJob.jobId);
+      pollProcessingStatus(savedJob.jobId, 0);
     }
   }, []);
 
-  // Effect to handle job ID polling
   useEffect(() => {
     if (jobId && processing && currentPhase !== 'completed' && currentPhase !== 'failed') {
-      pollProcessingStatus(jobId);
+      pollProcessingStatus(jobId, 0);
     }
   }, [jobId, processing, currentPhase]);
 
@@ -335,7 +337,6 @@ const UploadFormDual = () => {
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* Job Name */}
         <div className="space-y-2">
           <label className="block text-sm font-medium">Evaluation Job Name</label>
           <Input
@@ -347,7 +348,6 @@ const UploadFormDual = () => {
           />
         </div>
 
-        {/* Model Answer Upload */}
         <div className="space-y-2">
           <label className="block text-sm font-medium">Model Answer Sheet</label>
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
@@ -388,7 +388,6 @@ const UploadFormDual = () => {
           </div>
         </div>
 
-        {/* Upload Mode Selection */}
         <Tabs value={uploadMode} onValueChange={(value) => setUploadMode(value as 'zip' | 'individual')}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="zip" className="flex items-center space-x-2">
@@ -489,10 +488,8 @@ const UploadFormDual = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Enhanced Progress and Status Display */}
         {(uploading || processing || currentPhase === 'completed' || currentPhase === 'failed') && (
           <div className="space-y-4">
-            {/* Phase indicator */}
             <div className="flex items-center justify-center space-x-4 p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center space-x-2">
                 {currentPhase === 'uploading' && (
@@ -540,7 +537,6 @@ const UploadFormDual = () => {
               </div>
             </div>
 
-            {/* Status message */}
             {statusMessage && (
               <div className="text-center">
                 <p className="text-sm text-gray-600">{statusMessage}</p>
@@ -552,7 +548,6 @@ const UploadFormDual = () => {
               </div>
             )}
 
-            {/* Upload progress */}
             {uploading && (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
@@ -563,7 +558,6 @@ const UploadFormDual = () => {
               </div>
             )}
 
-            {/* Processing progress */}
             {processing && processingStatus && (
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
@@ -580,7 +574,6 @@ const UploadFormDual = () => {
                   className="w-full h-2"
                 />
 
-                {/* Detailed processing info */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -605,7 +598,6 @@ const UploadFormDual = () => {
               </div>
             )}
 
-            {/* Completion actions */}
             {currentPhase === 'completed' && jobId && (
               <div className="flex justify-center space-x-3">
                 <Button
@@ -621,7 +613,6 @@ const UploadFormDual = () => {
               </div>
             )}
 
-            {/* Error state */}
             {currentPhase === 'failed' && (
               <div className="text-center space-y-3">
                 <div className="text-red-600 text-sm">
