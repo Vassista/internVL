@@ -250,6 +250,37 @@ class ApiService {
     }
   }
 
+  async getAllEvaluations(limit: number = 20): Promise<JobSearchResponse> {
+    // Create an AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/jobs/search?limit=${limit}`, {
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (response.status === 503 || response.status === 504) {
+          throw new Error('Server is currently busy processing evaluations. Please try again in a moment.');
+        }
+        throw new Error(`Failed to get evaluations: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timed out. The server may be busy with evaluations.');
+      }
+
+      throw error;
+    }
+  }
+
   async getDashboardStats(): Promise<DashboardStats> {
     // Create an AbortController for timeout
     const controller = new AbortController();
