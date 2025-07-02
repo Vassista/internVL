@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
-import { FileUp, X, Check, Archive, Play, Image, Images } from "lucide-react";
+import { FileUp, X, Check, Archive, Play, Image, Images, Clock, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { apiService } from '@/services/apiService';
 
 const UploadFormDual = () => {
@@ -22,6 +23,8 @@ const UploadFormDual = () => {
   const [progress, setProgress] = useState(0);
   const [jobId, setJobId] = useState<string | null>(null);
   const [processingStatus, setProcessingStatus] = useState<any>(null);
+  const [currentPhase, setCurrentPhase] = useState<'idle' | 'uploading' | 'processing' | 'completed' | 'failed'>('idle');
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
   const handleModelFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -74,39 +77,55 @@ const UploadFormDual = () => {
       return;
     }
 
+    setCurrentPhase('uploading');
     setUploading(true);
     setProgress(0);
+    setStatusMessage('Preparing files for upload...');
 
     try {
       let result;
 
-      // Simulate upload progress
+      // Enhanced upload progress simulation
+      const progressSteps = [
+        { progress: 10, message: 'Validating files...' },
+        { progress: 25, message: 'Uploading model answer...' },
+        { progress: 60, message: 'Uploading student sheets...' },
+        { progress: 85, message: 'Processing upload...' },
+        { progress: 95, message: 'Finalizing...' }
+      ];
+
+      let stepIndex = 0;
       const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 200);
+        if (stepIndex < progressSteps.length) {
+          const step = progressSteps[stepIndex];
+          setProgress(step.progress);
+          setStatusMessage(step.message);
+          stepIndex++;
+        } else {
+          clearInterval(progressInterval);
+        }
+      }, 400);
 
       if (uploadMode === 'zip' && studentZipFile) {
         result = await apiService.uploadEvaluation(modelFile, studentZipFile, jobName);
       } else if (uploadMode === 'individual' && studentFiles.length > 0) {
-        // For individual files, we'll use the upload individual endpoint
         result = await apiService.uploadIndividualImages(modelFile, studentFiles, jobName);
       }
 
       clearInterval(progressInterval);
       setProgress(100);
+      setStatusMessage('Upload completed successfully!');
 
       if (result) {
         setJobId(result.job_id);
+        setCurrentPhase('processing');
+        setStatusMessage('Starting evaluation process...');
+
         toast({
           title: "Upload successful",
-          description: `${result.student_sheets_count} student sheets uploaded. Job ID: ${result.job_id}`,
+          description: `${result.student_sheets_count} student sheets uploaded. Starting evaluation...`,
         });
+
         setUploading(false);
         setProcessing(true);
         pollProcessingStatus(result.job_id);
@@ -114,8 +133,10 @@ const UploadFormDual = () => {
 
     } catch (error) {
       console.error('Upload error:', error);
+      setCurrentPhase('failed');
       setUploading(false);
       setProgress(0);
+      setStatusMessage('Upload failed');
 
       toast({
         title: "Upload failed",
@@ -133,32 +154,52 @@ const UploadFormDual = () => {
       const status = await apiService.getJobStatus(jobIdToUse);
       setProcessingStatus(status);
 
-      if (status.status === 'completed' || status.status === 'failed') {
-        setProcessing(false);
+      // Update status message based on processing state
+      if (status.status === 'pending') {
+        setStatusMessage('Evaluation queued, waiting to start...');
+      } else if (status.status === 'processing') {
+        const progress = status.total_students > 0
+          ? Math.round((status.processed_students / status.total_students) * 100)
+          : 0;
+        setStatusMessage(
+          `Evaluating answer sheets... (${status.processed_students}/${status.total_students} completed)`
+        );
+      }
 
-        if (status.status === 'completed') {
-          toast({
-            title: "Processing completed",
-            description: "Your evaluation is complete! Redirecting to results...",
-          });
-          // Navigate to results page with job ID
-          setTimeout(() => {
-            navigate(`/results?job_id=${jobIdToUse}`);
-          }, 2000);
-        } else {
-          toast({
-            title: "Processing failed",
-            description: status.error_message || "An error occurred during processing",
-            variant: "destructive"
-          });
-        }
+      if (status.status === 'completed') {
+        setCurrentPhase('completed');
+        setProcessing(false);
+        setStatusMessage('🎉 Evaluation completed successfully!');
+
+        toast({
+          title: "Evaluation completed",
+          description: "Your evaluation is complete! Redirecting to results...",
+        });
+
+        // Navigate to results page with job ID
+        setTimeout(() => {
+          navigate(`/results?job_id=${jobIdToUse}`);
+        }, 2000);
+
+      } else if (status.status === 'failed') {
+        setCurrentPhase('failed');
+        setProcessing(false);
+        setStatusMessage('❌ Evaluation failed');
+
+        toast({
+          title: "Evaluation failed",
+          description: status.error_message || "An error occurred during processing",
+          variant: "destructive"
+        });
       } else {
-        // Continue polling
+        // Continue polling for pending/processing states
         setTimeout(() => pollProcessingStatus(jobIdToUse), 3000);
       }
     } catch (error) {
       console.error('Status polling error:', error);
-      setTimeout(() => pollProcessingStatus(jobIdToUse), 5000); // Retry after 5 seconds
+      setStatusMessage('Connection issue, retrying...');
+      // Retry after 5 seconds on error
+      setTimeout(() => pollProcessingStatus(jobIdToUse), 5000);
     }
   };
 
@@ -172,7 +213,16 @@ const UploadFormDual = () => {
     setProcessingStatus(null);
     setUploading(false);
     setProcessing(false);
+    setCurrentPhase('idle');
+    setStatusMessage('');
   };
+
+  // Effect to handle job ID from URL or continue polling if there's an active job
+  useEffect(() => {
+    if (jobId && processing) {
+      pollProcessingStatus(jobId);
+    }
+  }, [jobId, processing]);
 
   return (
     <Card className="w-full max-w-4xl mx-auto">
@@ -338,46 +388,132 @@ const UploadFormDual = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Upload Progress */}
-        {uploading && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Uploading files...</span>
-              <span>{progress}%</span>
+        {/* Enhanced Progress and Status Display */}
+        {(uploading || processing || currentPhase === 'completed' || currentPhase === 'failed') && (
+          <div className="space-y-4">
+            {/* Phase indicator */}
+            <div className="flex items-center justify-center space-x-4 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-2">
+                {currentPhase === 'uploading' && (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                      Uploading
+                    </Badge>
+                  </>
+                )}
+                {currentPhase === 'processing' && (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-700">
+                      Processing
+                    </Badge>
+                  </>
+                )}
+                {currentPhase === 'completed' && (
+                  <>
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <Badge variant="secondary" className="bg-green-100 text-green-700">
+                      Completed
+                    </Badge>
+                  </>
+                )}
+                {currentPhase === 'failed' && (
+                  <>
+                    <AlertCircle className="h-5 w-5 text-red-500" />
+                    <Badge variant="destructive">
+                      Failed
+                    </Badge>
+                  </>
+                )}
+              </div>
             </div>
-            <Progress value={progress} className="w-full" />
-          </div>
-        )}
 
-        {/* Processing Status */}
-        {processingStatus && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="font-medium text-blue-900">Processing Status</h4>
-            <p className="text-sm text-blue-700 mt-1">
-              Status: {processingStatus.status} |
-              Processed: {processingStatus.processed_students}/{processingStatus.total_students}
-            </p>
-            {processing && (
-              <div className="mt-2">
-                <Progress
-                  value={(processingStatus.processed_students / processingStatus.total_students) * 100}
-                  className="w-full"
-                />
+            {/* Status message */}
+            {statusMessage && (
+              <div className="text-center">
+                <p className="text-sm text-gray-600">{statusMessage}</p>
               </div>
             )}
-            {processingStatus.status === 'completed' && jobId && (
-              <div className="mt-3">
+
+            {/* Upload progress */}
+            {uploading && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Upload Progress</span>
+                  <span>{progress}%</span>
+                </div>
+                <Progress value={progress} className="w-full h-2" />
+              </div>
+            )}
+
+            {/* Processing progress */}
+            {processing && processingStatus && (
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span>Evaluation Progress</span>
+                  <span>
+                    {processingStatus.processed_students}/{processingStatus.total_students} sheets
+                  </span>
+                </div>
+                <Progress
+                  value={processingStatus.total_students > 0
+                    ? (processingStatus.processed_students / processingStatus.total_students) * 100
+                    : 0
+                  }
+                  className="w-full h-2"
+                />
+
+                {/* Detailed processing info */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium text-blue-900">Job ID:</span>
+                      <p className="text-blue-700 font-mono text-xs truncate">{jobId}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium text-blue-900">Status:</span>
+                      <p className="text-blue-700 capitalize">{processingStatus.status}</p>
+                    </div>
+                  </div>
+
+                  {processingStatus.status === 'processing' && (
+                    <div className="mt-2 flex items-center space-x-2 text-blue-600">
+                      <Clock className="h-4 w-4" />
+                      <span className="text-xs">
+                        The AI model is analyzing each answer sheet. This may take a few minutes...
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Completion actions */}
+            {currentPhase === 'completed' && jobId && (
+              <div className="flex justify-center space-x-3">
                 <Button
                   onClick={() => navigate(`/results?job_id=${jobId}`)}
                   className="bg-green-600 hover:bg-green-700"
                 >
+                  <CheckCircle className="mr-2 h-4 w-4" />
                   View Results
+                </Button>
+                <Button variant="outline" onClick={resetForm}>
+                  Start New Evaluation
                 </Button>
               </div>
             )}
-            {processingStatus.status === 'failed' && (
-              <div className="mt-3 text-red-600 text-sm">
-                Error: {processingStatus.error_message || 'Processing failed'}
+
+            {/* Error state */}
+            {currentPhase === 'failed' && (
+              <div className="text-center space-y-2">
+                <div className="text-red-600 text-sm">
+                  {processingStatus?.error_message || 'An error occurred during processing'}
+                </div>
+                <Button variant="outline" onClick={resetForm}>
+                  Try Again
+                </Button>
               </div>
             )}
           </div>
@@ -390,17 +526,38 @@ const UploadFormDual = () => {
           onClick={resetForm}
           disabled={uploading || processing}
         >
-          Reset Form
+          {currentPhase === 'completed' || currentPhase === 'failed' ? 'Start New Evaluation' : 'Reset Form'}
         </Button>
 
         <Button
           onClick={uploadFiles}
-          disabled={uploading || processing || !modelFile || (!studentZipFile && studentFiles.length === 0) || !jobName.trim()}
+          disabled={
+            uploading ||
+            processing ||
+            !modelFile ||
+            (!studentZipFile && studentFiles.length === 0) ||
+            !jobName.trim() ||
+            currentPhase === 'completed'
+          }
+          className={
+            currentPhase === 'completed' ? 'bg-green-600 hover:bg-green-700' :
+            currentPhase === 'processing' ? 'bg-orange-600 hover:bg-orange-700' : ''
+          }
         >
           {uploading ? (
             <>
-              <FileUp className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Uploading...
+            </>
+          ) : processing ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Evaluating...
+            </>
+          ) : currentPhase === 'completed' ? (
+            <>
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Completed
             </>
           ) : (
             <>
