@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Loader2, RefreshCw, CheckCircle, Clock, AlertCircle, Search, X } from 'lucide-react';
-import { apiService, EvaluationResults, JobStatus, JobSearchResult } from '@/services/apiService';
+import { apiService, EvaluationResults, JobStatus, JobSearchResult, JobSuggestion } from '@/services/apiService';
 import ResultsTableNew from '@/components/results/ResultsTableNew';
 
 // Status badge component
@@ -56,8 +56,10 @@ const Results = () => {
   const [jobId, setJobId] = useState<string>(urlJobId || '');
   const [searchInput, setSearchInput] = useState<string>(urlJobId || '');
   const [searchSuggestions, setSearchSuggestions] = useState<JobSearchResult[]>([]);
+  const [initialSuggestions, setInitialSuggestions] = useState<JobSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
   const [searching, setSearching] = useState<boolean>(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState<boolean>(false);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [results, setResults] = useState<EvaluationResults | null>(null);
   const [loading, setLoading] = useState(false);
@@ -108,7 +110,22 @@ const Results = () => {
     }
   };
 
+  // Load initial suggestions on component mount
+  const loadInitialSuggestions = async () => {
+    setLoadingSuggestions(true);
+    try {
+      const response = await apiService.getJobSuggestions(10);
+      setInitialSuggestions(response.suggestions);
+    } catch (err) {
+      console.error('Error loading initial suggestions:', err);
+      // Don't show error for suggestions, just silently fail
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
   // Search for jobs by name to provide suggestions
+  // Search for jobs by name to provide suggestions (with better error handling for busy server)
   const searchJobSuggestions = async (query: string) => {
     if (query.length < 2) {
       setSearchSuggestions([]);
@@ -125,9 +142,11 @@ const Results = () => {
       console.error('Error searching jobs:', err);
       setSearchSuggestions([]);
       setShowSuggestions(false);
-      // Show error only if it's a connection issue, not just no results
-      if (err instanceof Error && (err.message.includes('Failed to fetch') || err.message.includes('timed out'))) {
-        setError('Unable to connect to server. Please check if the API server is running.');
+
+      // Don't show search errors unless it's a connection issue
+      // This prevents overwhelming users when the model is busy
+      if (err instanceof Error && err.message.includes('Failed to fetch')) {
+        console.warn('Search temporarily unavailable - server may be busy with evaluations');
       }
     } finally {
       setSearching(false);
@@ -160,8 +179,8 @@ const Results = () => {
     }
   };
 
-  // Handle suggestion selection
-  const handleSuggestionSelect = (suggestion: JobSearchResult) => {
+  // Handle suggestion selection (works for both search results and initial suggestions)
+  const handleSuggestionSelect = (suggestion: JobSearchResult | JobSuggestion) => {
     setSearchInput(suggestion.job_name);
     setJobId(suggestion.job_id);
     setShowSuggestions(false);
@@ -172,6 +191,9 @@ const Results = () => {
 
   // Load data when component mounts or jobId changes
   useEffect(() => {
+    // Load initial suggestions on mount
+    loadInitialSuggestions();
+
     if (urlJobId) {
       setJobId(urlJobId);
       setSearchInput(urlJobId);
@@ -242,6 +264,7 @@ const Results = () => {
     setSearchSuggestions([]);
     setShowSuggestions(false);
     setSearching(false);
+    setLoadingSuggestions(false);
     setJobStatus(null);
     setResults(null);
     setError(null);
@@ -318,7 +341,10 @@ const Results = () => {
                 value={searchInput}
                 onChange={(e) => handleSearchInputChange(e.target.value)}
                 onFocus={() => {
-                  if (searchSuggestions.length > 0) {
+                  // Show initial suggestions when focused if no search results
+                  if (searchSuggestions.length === 0 && initialSuggestions.length > 0 && !searchInput) {
+                    setShowSuggestions(true);
+                  } else if (searchSuggestions.length > 0) {
                     setShowSuggestions(true);
                   }
                 }}
@@ -330,22 +356,56 @@ const Results = () => {
               />
 
               {/* Search Suggestions Dropdown */}
-              {showSuggestions && searchSuggestions.length > 0 && (
+              {showSuggestions && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {searchSuggestions.map((suggestion) => (
-                    <div
-                      key={suggestion.job_id}
-                      className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                      onClick={() => handleSuggestionSelect(suggestion)}
-                    >
-                      <div className="font-medium text-sm">{suggestion.job_name}</div>
-                      <div className="text-xs text-gray-500 flex items-center gap-2">
-                        <StatusBadge status={suggestion.status} />
-                        <span>{suggestion.total_students} students</span>
-                        <span>{new Date(suggestion.created_at).toLocaleDateString()}</span>
+                  {/* Show search results if available */}
+                  {searchSuggestions.length > 0 ? (
+                    searchSuggestions.map((suggestion) => (
+                      <div
+                        key={suggestion.job_id}
+                        className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                        onClick={() => handleSuggestionSelect(suggestion)}
+                      >
+                        <div className="font-medium text-sm">{suggestion.job_name}</div>
+                        <div className="text-xs text-gray-500 flex items-center gap-2">
+                          <StatusBadge status={suggestion.status} />
+                          <span>{suggestion.total_students} students</span>
+                          <span>{new Date(suggestion.created_at).toLocaleDateString()}</span>
+                        </div>
                       </div>
+                    ))
+                  ) : (
+                    /* Show initial suggestions if no search results */
+                    initialSuggestions.length > 0 && !searchInput && (
+                      <>
+                        <div className="px-4 py-2 text-xs text-gray-500 font-medium bg-gray-50 border-b">
+                          Recent Jobs
+                        </div>
+                        {initialSuggestions.map((suggestion) => (
+                          <div
+                            key={suggestion.job_id}
+                            className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            onClick={() => handleSuggestionSelect(suggestion)}
+                          >
+                            <div className="font-medium text-sm">{suggestion.job_name}</div>
+                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                              <StatusBadge status={suggestion.status} />
+                              <span>{suggestion.total_students} students</span>
+                              <span>{new Date(suggestion.created_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )
+                  )}
+
+                  {/* Loading state for suggestions */}
+                  {loadingSuggestions && (
+                    <div className="px-4 py-3 text-center text-xs text-gray-500">
+                      <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                      Loading suggestions...
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
