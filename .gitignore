@@ -106,3 +106,4 @@ package-lock.json
 .config/pulse/420e7f6ecd6b4babad814a4c623379b9-stream-volumes.tdb
 .config/pulse/cookie
 prod_codes/view_db.py
+.psql_history
