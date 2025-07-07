@@ -31,7 +31,8 @@ from utils.api_utils import (
 from database.database import (
     init_database, save_evaluation_job, update_job_progress,
     complete_evaluation_job, save_student_evaluation,
-    get_evaluation_job, get_student_evaluations
+    get_evaluation_job, get_student_evaluations, get_all_evaluation_jobs,
+    get_dashboard_statistics, get_recent_evaluations, delete_evaluation_job
 )
 
 
@@ -52,7 +53,7 @@ app.add_middleware(
 # Globals
 model = None
 tokenizer = None
-jobs_storage: Dict[str, Dict] = {}
+# Note: Removed jobs_storage dict - now using PostgreSQL database
 
 # Constants
 UPLOAD_DIR = "temp_uploads"
@@ -131,10 +132,14 @@ def run_ocr_with_global_model(image_path: str):
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the InternVL model on startup"""
+    """Initialize the InternVL model and database on startup"""
     global model, tokenizer
 
     try:
+        # Initialize database
+        await init_database()
+        print("✅ Database initialized successfully!")
+
         print("Loading InternVL model...")
         model, tokenizer = load_model_and_tokenizer()
         print("✅ Model loaded successfully!")
@@ -143,7 +148,7 @@ async def startup_event():
         os.makedirs(UPLOAD_DIR, exist_ok=True)
 
     except Exception as e:
-        print(f"❌ Error loading model: {e}")
+        print(f"❌ Error during startup: {e}")
         # gotta exit here in production
 
 @app.on_event("shutdown")
@@ -278,23 +283,19 @@ async def process_upload(
         else:
             raise HTTPException(status_code=400, detail="Invalid upload configuration")
 
-        # Initialize job status
-        jobs_storage[job_id] = {
-            "job_id": job_id,
-            "job_name": job_name,
-            "status": "pending",
-            "total_students": len(student_files),
-            "processed_students": 0,
-            "created_at": datetime.now(),
-            "model_answer_path": model_answer_path,
-            "student_files": student_files,
-            "temp_dir": job_temp_dir,
-            "upload_type": upload_type,
-            "results": []
-        }
+        # Save job to database
+        await save_evaluation_job(job_id, len(student_files))
 
         # Start background processing
-        background_tasks.add_task(process_evaluation_job, job_id)
+        background_tasks.add_task(
+            process_evaluation_job,
+            job_id,
+            job_name,
+            model_answer_path,
+            student_files,
+            job_temp_dir,
+            upload_type
+        )
 
         return UploadResponse(
             job_id=job_id,
@@ -313,18 +314,17 @@ async def process_upload(
 async def get_evaluation_status(job_id: str):
     """Get the status of an evaluation job"""
 
-    if job_id not in jobs_storage:
+    job = await get_evaluation_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    job = jobs_storage[job_id]
 
     return JobStatus(
         job_id=job_id,
         status=job["status"],
-        total_students=job["total_students"],
-        processed_students=job["processed_students"],
-        created_at=job["created_at"],
-        completed_at=job.get("completed_at"),
+        total_students=job["total_files"],
+        processed_students=job["processed_files"],
+        created_at=datetime.fromisoformat(job["created_at"]),
+        completed_at=datetime.fromisoformat(job["completed_at"]) if job["completed_at"] else None,
         error_message=job.get("error_message")
     )
 
@@ -332,10 +332,9 @@ async def get_evaluation_status(job_id: str):
 async def get_evaluation_results(job_id: str):
     """Get the results of a completed evaluation job"""
 
-    if job_id not in jobs_storage:
+    job = await get_evaluation_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    job = jobs_storage[job_id]
 
     if job["status"] != "completed":
         raise HTTPException(
@@ -343,39 +342,38 @@ async def get_evaluation_results(job_id: str):
             detail=f"Job not completed yet. Current status: {job['status']}"
         )
 
+    # Get student evaluations
+    students = await get_student_evaluations(job_id)
+
+    # Parse results and summary stats from job
+    results = json.loads(job["results"]) if job["results"] else []
+    summary_stats = json.loads(job["summary_stats"]) if job["summary_stats"] else {}
+
     return EvaluationResults(
         job_id=job_id,
-        job_name=job["job_name"],
+        job_name=f"Evaluation_{job_id[:8]}",
         status=job["status"],
-        model_answers=job["model_answers"],
-        student_results=job["results"],
-        summary=job["summary"],
-        created_at=job["created_at"],
-        completed_at=job.get("completed_at")
+        model_answers=[],  # We can add this if needed
+        student_results=results,
+        summary=summary_stats,
+        created_at=datetime.fromisoformat(job["created_at"]),
+        completed_at=datetime.fromisoformat(job["completed_at"]) if job["completed_at"] else None
     )
 
 @app.get("/jobs/suggestions")
 async def get_job_suggestions(limit: int = 10):
     """Get recent job suggestions for search autocomplete"""
 
+    jobs = await get_all_evaluation_jobs(limit, 0)
+
     suggestions = []
-
-    # Get all jobs sorted by creation date (newest first)
-    all_jobs = []
-    for job_id, job_data in jobs_storage.items():
-        all_jobs.append((job_id, job_data))
-
-    # Sort by creation date (newest first)
-    all_jobs.sort(key=lambda x: x[1].get("created_at", datetime.min), reverse=True)
-
-    # Extract recent jobs with essential info for suggestions
-    for job_id, job_data in all_jobs[:limit]:
+    for job in jobs:
         suggestion = {
-            "job_id": job_id,
-            "job_name": job_data.get("job_name", "Unnamed Job"),
-            "status": job_data.get("status", "unknown"),
-            "total_students": job_data.get("total_students", 0),
-            "created_at": job_data.get("created_at", "").isoformat() if job_data.get("created_at") else "",
+            "job_id": job["id"],
+            "job_name": f"Evaluation_{job['id'][:8]}",
+            "status": job["status"],
+            "total_students": job["total_files"],
+            "created_at": job["created_at"],
         }
         suggestions.append(suggestion)
 
@@ -386,182 +384,71 @@ async def get_job_suggestions(limit: int = 10):
 
 @app.get("/jobs/search")
 async def search_jobs(query: Optional[str] = None, limit: int = 20):
-    """Search for jobs by name or list all jobs with improved performance"""
+    """Search for jobs by name or list all jobs"""
 
-    matching_jobs = []
+    # Get all jobs from database
+    jobs = await get_all_evaluation_jobs(limit, 0)
 
-    # If no query, return recent jobs (limit to avoid overwhelming)
-    if not query:
-        all_jobs = []
-        for job_id, job_data in jobs_storage.items():
-            all_jobs.append((job_id, job_data))
-
-        # Sort by creation date (newest first) and limit
-        all_jobs.sort(key=lambda x: x[1].get("created_at", datetime.min), reverse=True)
-
-        for job_id, job_data in all_jobs[:limit]:
-            job_info = {
-                "job_id": job_id,
-                "job_name": job_data.get("job_name", "Unnamed Job"),
-                "status": job_data.get("status", "unknown"),
-                "total_students": job_data.get("total_students", 0),
-                "processed_students": job_data.get("processed_students", 0),
-                "created_at": job_data.get("created_at", "").isoformat() if job_data.get("created_at") else "",
-                "completed_at": job_data.get("completed_at", "").isoformat() if job_data.get("completed_at") else None,
-            }
-            matching_jobs.append(job_info)
-    else:
-        # Search by job name (case-insensitive) with fuzzy matching
+    # Filter by query if provided
+    if query:
         query_lower = query.lower()
-        scored_jobs = []
+        jobs = [job for job in jobs if query_lower in job["id"].lower()]
 
-        for job_id, job_data in jobs_storage.items():
-            job_name = job_data.get("job_name", "").lower()
-
-            # Calculate relevance score
-            score = 0
-            if query_lower == job_name:
-                score = 100  # Exact match
-            elif job_name.startswith(query_lower):
-                score = 90  # Starts with query
-            elif query_lower in job_name:
-                score = 80  # Contains query
-            elif any(word in job_name for word in query_lower.split()):
-                score = 70  # Contains any word from query
-
-            if score > 0:
-                job_info = {
-                    "job_id": job_id,
-                    "job_name": job_data.get("job_name", "Unnamed Job"),
-                    "status": job_data.get("status", "unknown"),
-                    "total_students": job_data.get("total_students", 0),
-                    "processed_students": job_data.get("processed_students", 0),
-                    "created_at": job_data.get("created_at", "").isoformat() if job_data.get("created_at") else "",
-                    "completed_at": job_data.get("completed_at", "").isoformat() if job_data.get("completed_at") else None,
-                    "_relevance_score": score
-                }
-                scored_jobs.append(job_info)
-
-        # Sort by relevance score first, then by creation date
-        scored_jobs.sort(key=lambda x: (x["_relevance_score"], x["created_at"]), reverse=True)
-
-        # Remove the internal score field and limit results
-        for job in scored_jobs[:limit]:
-            del job["_relevance_score"]
-            matching_jobs.append(job)
+    # Convert to serializable format
+    jobs_list = []
+    for job in jobs:
+        job_dict = {
+            "job_id": job["id"],
+            "job_name": f"Evaluation_{job['id'][:8]}",
+            "status": job["status"],
+            "total_students": job["total_files"],
+            "processed_students": job["processed_files"],
+            "created_at": job["created_at"],
+            "completed_at": job["completed_at"],
+        }
+        jobs_list.append(job_dict)
 
     return {
         "query": query,
-        "total_found": len(matching_jobs),
-        "jobs": matching_jobs
+        "total_found": len(jobs_list),
+        "jobs": jobs_list
     }
 
 @app.get("/dashboard/stats")
 async def get_dashboard_stats():
     """Get dashboard statistics"""
 
-    total_evaluations = len(jobs_storage)
-    pending_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "pending")
-    processing_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "processing")
-    completed_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "completed")
-    failed_evaluations = sum(1 for job in jobs_storage.values() if job.get("status") == "failed")
-
-    # Calculate total students processed and average score
-    total_students_processed = 0
-    total_score_sum = 0
-    total_scores_count = 0
-
-    for job in jobs_storage.values():
-        if job.get("status") == "completed" and "results" in job:
-            job_students = len(job["results"])
-            total_students_processed += job_students
-
-            # Calculate average score for this job
-            for result in job["results"]:
-                if "percentage" in result:
-                    total_score_sum += result["percentage"]
-                    total_scores_count += 1
-
-    average_score = total_score_sum / total_scores_count if total_scores_count > 0 else 0.0
-
-    return {
-        "total_evaluations": total_evaluations,
-        "pending_evaluations": pending_evaluations + processing_evaluations,  # Combine pending + processing
-        "completed_evaluations": completed_evaluations,
-        "failed_evaluations": failed_evaluations,
-        "total_students_processed": total_students_processed,
-        "average_score": round(average_score, 1)
-    }
+    stats = await get_dashboard_statistics()
+    return stats
 
 @app.get("/dashboard/recent")
-async def get_recent_evaluations(limit: int = 10):
+async def get_recent_evaluations_endpoint(limit: int = 10):
     """Get recent evaluations for dashboard"""
 
-    recent_evaluations = []
+    recent_jobs = await get_recent_evaluations(limit)
+    return {"recent_jobs": recent_jobs}
 
-    # Get all completed jobs sorted by completion time
-    completed_jobs = []
-    for job_id, job in jobs_storage.items():
-        if job.get("status") == "completed" and "results" in job:
-            completed_jobs.append((job_id, job))
-
-    # Sort by completed_at timestamp (newest first)
-    completed_jobs.sort(key=lambda x: x[1].get("completed_at", datetime.min), reverse=True)
-
-    # Extract recent evaluations
-    for job_id, job in completed_jobs:
-        job_name = job.get("job_name", "Unnamed Job")
-        completed_at = job.get("completed_at")
-        created_at = job.get("created_at")
-
-        for result in job.get("results", []):
-            if len(recent_evaluations) >= limit:
-                break
-
-            if hasattr(result, 'roll_number'):
-                roll_number = result.roll_number
-                score = result.score
-                total_questions = result.total_questions
-                percentage = result.percentage
-            else:
-                roll_number = result.get("roll_number", "Unknown")
-                score = result.get("score", 0)
-                total_questions = result.get("total_questions", 0)
-                percentage = result.get("percentage", 0)
-
-            recent_evaluations.append({
-                "job_id": job_id,
-                "job_name": job_name,
-                "roll_number": roll_number,
-                "score": score,
-                "total_questions": total_questions,
-                "percentage": percentage,
-                "status": "completed",
-                "created_at": created_at.isoformat() if created_at else "",
-                "completed_at": completed_at.isoformat() if completed_at else None
-            })
-
-        if len(recent_evaluations) >= limit:
-            break
-
-    return recent_evaluations
-
-async def process_evaluation_job(job_id: str):
+async def process_evaluation_job(
+    job_id: str,
+    job_name: str,
+    model_answer_path: str,
+    student_files: List[str],
+    temp_dir: str,
+    upload_type: str
+):
     """
     Background task to process the evaluation job
     """
     global model, tokenizer
 
     try:
-        job = jobs_storage[job_id]
-        job["status"] = "processing"
-
         # Process model answer first
         print(f"Processing model answer for job {job_id}")
-        model_df = run_ocr_with_global_model(job["model_answer_path"])
+        model_df = run_ocr_with_global_model(model_answer_path)
 
         if model_df is None or model_df.empty:
-            raise Exception("Failed to process model answer")
+            await complete_evaluation_job(job_id, "failed", "Failed to process model answer")
+            return
 
         # Convert model answers to StudentAnswer objects
         model_answers = []
@@ -571,14 +458,13 @@ async def process_evaluation_job(job_id: str):
                 answer=str(row['answer'])
             ))
 
-        job["model_answers"] = model_answers
-
         # Process each student sheet
         student_results = []
+        processed_count = 0
 
-        for i, student_file in enumerate(job["student_files"]):
+        for i, student_file in enumerate(student_files):
             try:
-                print(f"Processing student {i+1}/{len(job['student_files'])}: {student_file}")
+                print(f"Processing student {i+1}/{len(student_files)}: {student_file}")
 
                 # Extract roll number from filename
                 roll_number = extract_roll_number_from_filename(os.path.basename(student_file))
@@ -589,16 +475,33 @@ async def process_evaluation_job(job_id: str):
                 if student_df is not None and not student_df.empty:
                     # Convert to StudentAnswer objects
                     student_answers = []
+                    student_answers_dict = []
                     for _, row in student_df.iterrows():
-                        student_answers.append(StudentAnswer(
+                        answer_obj = StudentAnswer(
                             sn=int(row['sn']),
                             answer=str(row['answer'])
-                        ))
+                        )
+                        student_answers.append(answer_obj)
+                        student_answers_dict.append({
+                            "sn": int(row['sn']),
+                            "answer": str(row['answer'])
+                        })
 
                     # Calculate score
                     score_info = calculate_score(student_answers, model_answers)
 
-                    # Create student result
+                    # Save individual student evaluation to database
+                    await save_student_evaluation(
+                        job_id=job_id,
+                        roll_number=roll_number,
+                        filename=os.path.basename(student_file),
+                        ocr_text=student_df.to_json(),
+                        processed_answers=student_answers_dict,
+                        score=float(score_info["correct"]),
+                        total_questions=float(score_info["total"])
+                    )
+
+                    # Create student result for summary
                     student_result = StudentResult(
                         roll_number=roll_number,
                         answers=student_answers,
@@ -609,12 +512,13 @@ async def process_evaluation_job(job_id: str):
                     )
 
                     student_results.append(student_result)
+                    processed_count += 1
 
                 else:
-                    # Failed to process this student
                     print(f"Failed to process student: {student_file}")
 
-                job["processed_students"] = i + 1
+                # Update progress in database
+                await update_job_progress(job_id, processed_count)
 
             except Exception as e:
                 print(f"Error processing student {student_file}: {e}")
@@ -623,42 +527,57 @@ async def process_evaluation_job(job_id: str):
         # Generate summary statistics
         summary = create_summary_stats(student_results)
 
-        # Update job with final results
-        job["results"] = student_results
-        job["summary"] = summary
-        job["status"] = "completed"
-        job["completed_at"] = datetime.now()
+        # Convert student_results to JSON-serializable format
+        results_dict = []
+        for result in student_results:
+            results_dict.append({
+                "roll_number": result.roll_number,
+                "answers": [{"sn": ans.sn, "answer": ans.answer} for ans in result.answers],
+                "score": result.score,
+                "total_questions": result.total_questions,
+                "percentage": result.percentage,
+                "status": result.status
+            })
+
+        # Complete the job in database
+        await complete_evaluation_job(
+            job_id=job_id,
+            status="completed",
+            error_message=None,
+            results=json.dumps(results_dict),
+            summary_stats=json.dumps(summary)
+        )
 
         print(f"✅ Job {job_id} completed successfully! Processed {len(student_results)} students.")
 
     except Exception as e:
         print(f"❌ Error processing job {job_id}: {e}")
-        job["status"] = "failed"
-        job["error_message"] = str(e)
-        job["completed_at"] = datetime.now()
+        await complete_evaluation_job(job_id, "failed", str(e))
 
     finally:
         # Cleanup temporary files after processing
-        cleanup_temp_files(job.get("temp_dir", ""))
+        cleanup_temp_files(temp_dir)
 
 @app.delete("/jobs/{job_id}")
 async def delete_job(job_id: str):
     """Delete a job and its associated data"""
 
-    if job_id not in jobs_storage:
+    success = await delete_evaluation_job(job_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job = jobs_storage[job_id]
-
-    # Cleanup files
-    cleanup_temp_files(job.get("temp_dir", ""))
-
-    # Remove from storage
-    del jobs_storage[job_id]
+    # Also cleanup files
+    job_dir = Path(UPLOAD_DIR) / job_id
+    if job_dir.exists():
+        cleanup_temp_files(job_dir)
 
     return {"message": f"Job {job_id} deleted successfully"}
 
 if __name__ == "__main__":
+    # Create upload directory if it doesn't exist
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    # Run the server
     uvicorn.run(
         "api_server:app",
         host="0.0.0.0",
