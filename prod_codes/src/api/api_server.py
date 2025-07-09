@@ -36,7 +36,6 @@ from database.database import (
 )
 
 
-# FastAPI app and CORS setup
 app = FastAPI(
     title="InternVL API",
     description="Automated answer sheet evaluation using InternVL",
@@ -50,12 +49,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Globals
 model = None
 tokenizer = None
-# Note: Removed jobs_storage dict - now using PostgreSQL database
 
-# Constants
 UPLOAD_DIR = "temp_uploads"
 MAX_FILE_SIZE = 100 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
@@ -345,15 +341,37 @@ async def get_evaluation_results(job_id: str):
     # Get student evaluations
     students = await get_student_evaluations(job_id)
 
-    # Parse results and summary stats from job
-    results = json.loads(job["results"]) if job["results"] else []
-    summary_stats = json.loads(job["summary_stats"]) if job["summary_stats"] else {}
+    # Parse results and summary stats from job with error handling
+    results = []
+    summary_stats = {}
+
+    # Handle results field
+    if job["results"]:
+        if isinstance(job["results"], str) and job["results"].strip():
+            try:
+                results = json.loads(job["results"])
+            except json.JSONDecodeError as e:
+                print(f"Warning: Could not parse job results JSON: {e}")
+                results = []
+        elif isinstance(job["results"], list):
+            results = job["results"]
+
+    # Handle summary_stats field
+    if job["summary_stats"]:
+        if isinstance(job["summary_stats"], str) and job["summary_stats"].strip():
+            try:
+                summary_stats = json.loads(job["summary_stats"])
+            except json.JSONDecodeError as e:
+                print(f"Warning: Could not parse job summary_stats JSON: {e}")
+                summary_stats = {}
+        elif isinstance(job["summary_stats"], dict):
+            summary_stats = job["summary_stats"]
 
     return EvaluationResults(
         job_id=job_id,
         job_name=f"Evaluation_{job_id[:8]}",
         status=job["status"],
-        model_answers=[],  # We can add this if needed
+        model_answers=[],
         student_results=results,
         summary=summary_stats,
         created_at=datetime.fromisoformat(job["created_at"]),
@@ -364,7 +382,10 @@ async def get_evaluation_results(job_id: str):
 async def get_job_suggestions(limit: int = 10):
     """Get recent job suggestions for search autocomplete"""
 
-    jobs = await get_all_evaluation_jobs(limit, 0)
+    jobs = await get_all_evaluation_jobs()
+
+    # Limit results
+    jobs = jobs[:limit]
 
     suggestions = []
     for job in jobs:
@@ -387,12 +408,15 @@ async def search_jobs(query: Optional[str] = None, limit: int = 20):
     """Search for jobs by name or list all jobs"""
 
     # Get all jobs from database
-    jobs = await get_all_evaluation_jobs(limit, 0)
+    jobs = await get_all_evaluation_jobs()
 
     # Filter by query if provided
     if query:
         query_lower = query.lower()
         jobs = [job for job in jobs if query_lower in job["id"].lower()]
+
+    # Limit results
+    jobs = jobs[:limit]
 
     # Convert to serializable format
     jobs_list = []
@@ -447,7 +471,7 @@ async def process_evaluation_job(
         model_df = run_ocr_with_global_model(model_answer_path)
 
         if model_df is None or model_df.empty:
-            await complete_evaluation_job(job_id, "failed", "Failed to process model answer")
+            await complete_evaluation_job(job_id, {}, {}, "Failed to process model answer")
             return
 
         # Convert model answers to StudentAnswer objects
@@ -497,8 +521,9 @@ async def process_evaluation_job(
                         filename=os.path.basename(student_file),
                         ocr_text=student_df.to_json(),
                         processed_answers=student_answers_dict,
-                        score=float(score_info["correct"]),
-                        total_questions=float(score_info["total"])
+                        total_score=float(score_info["correct"]),
+                        max_possible_score=float(score_info["total"]),
+                        percentage=float(score_info["percentage"])
                     )
 
                     # Create student result for summary
@@ -539,20 +564,28 @@ async def process_evaluation_job(
                 "status": result.status
             })
 
-        # Complete the job in database
-        await complete_evaluation_job(
-            job_id=job_id,
-            status="completed",
-            error_message=None,
-            results=json.dumps(results_dict),
-            summary_stats=json.dumps(summary)
-        )
+        # Determine final job status based on processing results
+        total_files = len(student_files)
+        processed_files = len(student_results)
 
-        print(f"✅ Job {job_id} completed successfully! Processed {len(student_results)} students.")
+        if processed_files == 0:
+            # No students processed successfully - mark as failed
+            error_message = f"Failed to process any of the {total_files} student files. Please check the file formats and try again."
+            await complete_evaluation_job(job_id, results_dict, summary, error_message)
+            print(f"❌ Job {job_id} failed! Processed 0/{total_files} students.")
+        elif processed_files == total_files:
+            # All students processed successfully - mark as completed
+            await complete_evaluation_job(job_id, results_dict, summary, None)
+            print(f"✅ Job {job_id} completed successfully! Processed {processed_files}/{total_files} students.")
+        else:
+            # Partial success - mark as completed with warning
+            error_message = f"Partially completed: Successfully processed {processed_files} out of {total_files} student files. Some files may have had formatting issues."
+            await complete_evaluation_job(job_id, results_dict, summary, error_message)
+            print(f"⚠️ Job {job_id} partially completed! Processed {processed_files}/{total_files} students.")
 
     except Exception as e:
         print(f"❌ Error processing job {job_id}: {e}")
-        await complete_evaluation_job(job_id, "failed", str(e))
+        await complete_evaluation_job(job_id, {}, {}, str(e))
 
     finally:
         # Cleanup temporary files after processing
