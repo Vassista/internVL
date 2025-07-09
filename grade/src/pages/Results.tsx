@@ -623,31 +623,31 @@ const Results = () => {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{results.summary.total_students}</div>
+                <div className="text-2xl font-bold">{results.summary?.total_students || 0}</div>
                 <p className="text-xs text-muted-foreground">Total Students</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{results.summary.average_score}%</div>
+                <div className="text-2xl font-bold">{results.summary?.average_score || 0}%</div>
                 <p className="text-xs text-muted-foreground">Average Score</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{results.summary.highest_score}%</div>
+                <div className="text-2xl font-bold">{results.summary?.highest_score || 0}%</div>
                 <p className="text-xs text-muted-foreground">Highest Score</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{results.summary.lowest_score}%</div>
+                <div className="text-2xl font-bold">{results.summary?.lowest_score || 0}%</div>
                 <p className="text-xs text-muted-foreground">Lowest Score</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <div className="text-2xl font-bold">{results.summary.pass_rate.toFixed(1)}%</div>
+                <div className="text-2xl font-bold">{(results.summary?.pass_rate || 0).toFixed(1)}%</div>
                 <p className="text-xs text-muted-foreground">Pass Rate</p>
               </CardContent>
             </Card>
