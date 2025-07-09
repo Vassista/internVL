@@ -314,7 +314,8 @@ class ApiService {
       throw new Error(`Failed to get recent evaluations: ${response.statusText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    return data.recent_jobs || [];
   }
 
   async deleteJob(jobId: string): Promise<void> {

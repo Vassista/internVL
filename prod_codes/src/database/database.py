@@ -1,4 +1,3 @@
-
 """
 Database models and connection for InternVL API using SQLite
 """
@@ -172,3 +171,118 @@ async def get_student_evaluations(job_id: str) -> List[dict]:
             }
             for eval in evaluations
         ]
+
+async def get_all_evaluation_jobs() -> List[dict]:
+    """Get all evaluation jobs ordered by creation date"""
+    async with async_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(
+            select(EvaluationJob).order_by(EvaluationJob.created_at.desc())
+        )
+        jobs = result.scalars().all()
+
+        return [
+            {
+                "id": job.id,
+                "status": job.status,
+                "total_files": job.total_files,
+                "processed_files": job.processed_files,
+                "created_at": job.created_at.isoformat(),
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "error_message": job.error_message,
+                "results": json.loads(job.results) if job.results else None,
+                "summary_stats": json.loads(job.summary_stats) if job.summary_stats else None
+            }
+            for job in jobs
+        ]
+
+async def get_dashboard_statistics() -> dict:
+    """Get dashboard statistics"""
+    async with async_session() as session:
+        from sqlalchemy import select, func
+
+        # Get total jobs
+        total_jobs_result = await session.execute(
+            select(func.count(EvaluationJob.id))
+        )
+        total_jobs = total_jobs_result.scalar()
+
+        # Get completed jobs
+        completed_jobs_result = await session.execute(
+            select(func.count(EvaluationJob.id)).where(EvaluationJob.status == "completed")
+        )
+        completed_jobs = completed_jobs_result.scalar()
+
+        # Get failed jobs
+        failed_jobs_result = await session.execute(
+            select(func.count(EvaluationJob.id)).where(EvaluationJob.status == "failed")
+        )
+        failed_jobs = failed_jobs_result.scalar()
+
+        # Get total students evaluated
+        total_students_result = await session.execute(
+            select(func.count(StudentEvaluation.id))
+        )
+        total_students = total_students_result.scalar()
+
+        # Get average score
+        avg_score_result = await session.execute(
+            select(func.avg(StudentEvaluation.percentage))
+        )
+        avg_score = avg_score_result.scalar() or 0
+
+        return {
+            "total_evaluations": total_jobs or 0,
+            "completed_evaluations": completed_jobs or 0,
+            "failed_evaluations": failed_jobs or 0,
+            "pending_evaluations": (total_jobs or 0) - (completed_jobs or 0) - (failed_jobs or 0),
+            "total_students_processed": total_students or 0,
+            "average_score": round(avg_score, 2) if avg_score else 0
+        }
+
+async def get_recent_evaluations(limit: int = 10) -> List[dict]:
+    """Get recent evaluations"""
+    async with async_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(
+            select(EvaluationJob)
+            .order_by(EvaluationJob.created_at.desc())
+            .limit(limit)
+        )
+        jobs = result.scalars().all()
+
+        return [
+            {
+                "id": job.id,
+                "status": job.status,
+                "total_files": job.total_files,
+                "processed_files": job.processed_files,
+                "created_at": job.created_at.isoformat(),
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "error_message": job.error_message
+            }
+            for job in jobs
+        ]
+
+async def delete_evaluation_job(job_id: str) -> bool:
+    """Delete an evaluation job and its associated student evaluations"""
+    async with async_session() as session:
+        from sqlalchemy import select
+
+        # Delete student evaluations first
+        student_evals_result = await session.execute(
+            select(StudentEvaluation).where(StudentEvaluation.job_id == job_id)
+        )
+        student_evals = student_evals_result.scalars().all()
+
+        for eval in student_evals:
+            await session.delete(eval)
+
+        # Delete the job
+        job = await session.get(EvaluationJob, job_id)
+        if job:
+            await session.delete(job)
+            await session.commit()
+            return True
+
+        return False
