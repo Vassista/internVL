@@ -93,41 +93,47 @@ const RecentEvaluations = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Roll Number</TableHead>
-                  <TableHead>Job Name</TableHead>
-                  <TableHead>Score</TableHead>
+                  <TableHead>Job ID</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Progress</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Completed</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {evaluations.map((evaluation, index) => (
-                  <TableRow key={`${evaluation.job_id}-${evaluation.roll_number}-${index}`}>
-                    <TableCell className="font-medium">{evaluation.roll_number}</TableCell>
-                    <TableCell>
-                      <div className="max-w-[200px] truncate" title={evaluation.job_name}>
-                        {evaluation.job_name}
+                  <TableRow key={`${evaluation.id}-${index}`}>
+                    <TableCell className="font-medium">
+                      <div className="max-w-[200px] truncate" title={evaluation.id}>
+                        {evaluation.id.substring(0, 8)}...
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {evaluation.status === 'completed' ? (
-                        <span className="font-medium">
-                          {evaluation.score}/{evaluation.total_questions} ({evaluation.percentage.toFixed(1)}%)
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
                     </TableCell>
                     <TableCell>
                       {getStatusBadge(evaluation.status)}
                     </TableCell>
                     <TableCell>
-                      {new Date(evaluation.created_at).toLocaleDateString()}
+                      <span className="text-sm text-muted-foreground">
+                        {evaluation.processed_files}/{evaluation.total_files} files
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(evaluation.created_at).toLocaleDateString()}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {evaluation.completed_at ? (
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(evaluation.completed_at).toLocaleDateString()}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="link" size="sm" asChild>
-                        <Link to={`/results?job_id=${evaluation.job_id}`}>
+                        <Link to={`/results?job_id=${evaluation.id}`}>
                           View
                         </Link>
                       </Button>
