@@ -77,15 +77,13 @@ export interface DashboardStats {
 }
 
 export interface RecentEvaluation {
-  job_id: string;
-  job_name: string;
-  roll_number: string;
-  score: number;
-  total_questions: number;
-  percentage: number;
+  id: string;
   status: string;
+  total_files: number;
+  processed_files: number;
   created_at: string;
   completed_at?: string;
+  error_message?: string;
 }
 
 export interface UploadResponse {
