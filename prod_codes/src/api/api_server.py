@@ -280,7 +280,7 @@ async def process_upload(
             raise HTTPException(status_code=400, detail="Invalid upload configuration")
 
         # Save job to database
-        await save_evaluation_job(job_id, len(student_files))
+        await save_evaluation_job(job_id, job_name, len(student_files))
 
         # Start background processing
         background_tasks.add_task(
@@ -316,6 +316,7 @@ async def get_evaluation_status(job_id: str):
 
     return JobStatus(
         job_id=job_id,
+        job_name=job.get("name"),
         status=job["status"],
         total_students=job["total_files"],
         processed_students=job["processed_files"],
@@ -369,7 +370,7 @@ async def get_evaluation_results(job_id: str):
 
     return EvaluationResults(
         job_id=job_id,
-        job_name=f"Evaluation_{job_id[:8]}",
+        job_name=job.get("name") or f"Evaluation_{job_id[:8]}",
         status=job["status"],
         model_answers=[],
         student_results=results,
@@ -391,7 +392,7 @@ async def get_job_suggestions(limit: int = 10):
     for job in jobs:
         suggestion = {
             "job_id": job["id"],
-            "job_name": f"Evaluation_{job['id'][:8]}",
+            "job_name": job.get("name") or f"Evaluation_{job['id'][:8]}",
             "status": job["status"],
             "total_students": job["total_files"],
             "created_at": job["created_at"],
@@ -413,7 +414,10 @@ async def search_jobs(query: Optional[str] = None, limit: int = 20):
     # Filter by query if provided
     if query:
         query_lower = query.lower()
-        jobs = [job for job in jobs if query_lower in job["id"].lower()]
+        jobs = [job for job in jobs if (
+            query_lower in job["id"].lower() or
+            (job.get("name") and query_lower in job["name"].lower())
+        )]
 
     # Limit results
     jobs = jobs[:limit]
@@ -423,7 +427,7 @@ async def search_jobs(query: Optional[str] = None, limit: int = 20):
     for job in jobs:
         job_dict = {
             "job_id": job["id"],
-            "job_name": f"Evaluation_{job['id'][:8]}",
+            "job_name": job.get("name") or f"Evaluation_{job['id'][:8]}",
             "status": job["status"],
             "total_students": job["total_files"],
             "processed_students": job["processed_files"],
