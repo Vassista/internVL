@@ -26,6 +26,7 @@ class EvaluationJob(Base):
     __tablename__ = "evaluation_jobs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="processing")
     total_files: Mapped[int] = mapped_column(Integer, default=0)
     processed_files: Mapped[int] = mapped_column(Integer, default=0)
@@ -68,11 +69,12 @@ async def get_db_session() -> AsyncSession:
     async with async_session() as session:
         return session
 
-async def save_evaluation_job(job_id: str, total_files: int) -> None:
+async def save_evaluation_job(job_id: str, job_name: str, total_files: int) -> None:
     """Save a new evaluation job"""
     async with async_session() as session:
         job = EvaluationJob(
             id=job_id,
+            name=job_name,
             status="processing",
             total_files=total_files,
             processed_files=0
@@ -137,6 +139,7 @@ async def get_evaluation_job(job_id: str) -> Optional[dict]:
         if job:
             return {
                 "id": job.id,
+                "name": job.name,
                 "status": job.status,
                 "total_files": job.total_files,
                 "processed_files": job.processed_files,
@@ -184,6 +187,7 @@ async def get_all_evaluation_jobs() -> List[dict]:
         return [
             {
                 "id": job.id,
+                "name": job.name,
                 "status": job.status,
                 "total_files": job.total_files,
                 "processed_files": job.processed_files,
@@ -254,6 +258,7 @@ async def get_recent_evaluations(limit: int = 10) -> List[dict]:
         return [
             {
                 "id": job.id,
+                "name": job.name,
                 "status": job.status,
                 "total_files": job.total_files,
                 "processed_files": job.processed_files,
