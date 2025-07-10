@@ -93,7 +93,7 @@ const RecentEvaluations = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Job ID</TableHead>
+                  <TableHead>Job Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Progress</TableHead>
                   <TableHead>Created</TableHead>
@@ -105,8 +105,15 @@ const RecentEvaluations = () => {
                 {evaluations.map((evaluation, index) => (
                   <TableRow key={`${evaluation.id}-${index}`}>
                     <TableCell className="font-medium">
-                      <div className="max-w-[200px] truncate" title={evaluation.id}>
-                        {evaluation.id.substring(0, 8)}...
+                      <div className="max-w-[200px]">
+                        <div className="truncate" title={evaluation.name || evaluation.id}>
+                          {evaluation.name || `Job ${evaluation.id.substring(0, 8)}...`}
+                        </div>
+                        {evaluation.name && (
+                          <div className="text-xs text-muted-foreground font-mono">
+                            {evaluation.id.substring(0, 8)}...
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
