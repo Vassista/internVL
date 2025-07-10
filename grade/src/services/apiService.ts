@@ -59,6 +59,7 @@ export interface JobSearchResponse {
 
 export interface JobStatus {
   job_id: string;
+  job_name?: string;
   status: string;
   total_students: number;
   processed_students: number;
@@ -78,6 +79,7 @@ export interface DashboardStats {
 
 export interface RecentEvaluation {
   id: string;
+  name?: string;
   status: string;
   total_files: number;
   processed_files: number;
