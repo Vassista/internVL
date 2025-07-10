@@ -602,15 +602,6 @@ const UploadFormDual = () => {
                       <p className="text-blue-700 capitalize">{processingStatus.status}</p>
                     </div>
                   </div>
-
-                  {processingStatus.status === 'processing' && (
-                    <div className="mt-2 flex items-center space-x-2 text-blue-600">
-                      <Clock className="h-4 w-4" />
-                      <span className="text-xs">
-                        The AI model is analyzing each answer sheet. This may take a few minutes...
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
