@@ -422,7 +422,7 @@ const Results = () => {
             <div className="flex-1 relative">
               <Input
                 type="text"
-                placeholder="Enter job ID or job name (e.g., 'Math Exam 2024' or '6129becb-22a2-481d-bc0e-10aaddbea718')"
+                placeholder="Enter Evaluation ID or name (e.g., 'Math Exam 2024' or '6129becb-22a2-481d-bc0e-10aaddbea718')"
                 value={searchInput}
                 onChange={(e) => handleSearchInputChange(e.target.value)}
                 onFocus={() => {
