@@ -1,5 +1,5 @@
 """
-Database models and connection for InternVL API using SQLite
+Database models and connection for InternVL API using PostgreSQL
 """
 import asyncio
 from datetime import datetime
@@ -9,9 +9,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, DateTime, Text, Float, Integer, JSON
 import json
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Database configuration
-DATABASE_URL = "sqlite+aiosqlite:///./internvl_evaluations.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://vassista:vassista@localhost/internvl_db")
 
 # Create async engine
 engine = create_async_engine(DATABASE_URL, echo=False)
@@ -137,6 +141,21 @@ async def get_evaluation_job(job_id: str) -> Optional[dict]:
     async with async_session() as session:
         job = await session.get(EvaluationJob, job_id)
         if job:
+            # Parse JSON fields safely
+            results = None
+            if job.results:
+                try:
+                    results = json.loads(job.results)
+                except json.JSONDecodeError:
+                    results = None
+
+            summary_stats = None
+            if job.summary_stats:
+                try:
+                    summary_stats = json.loads(job.summary_stats)
+                except json.JSONDecodeError:
+                    summary_stats = None
+
             return {
                 "id": job.id,
                 "name": job.name,
@@ -146,8 +165,8 @@ async def get_evaluation_job(job_id: str) -> Optional[dict]:
                 "created_at": job.created_at.isoformat(),
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "error_message": job.error_message,
-                "results": json.loads(job.results) if job.results else None,
-                "summary_stats": json.loads(job.summary_stats) if job.summary_stats else None
+                "results": results,
+                "summary_stats": summary_stats
             }
         return None
 
