@@ -282,7 +282,7 @@ const Results = () => {
         }
       }
     } else {
-      setError('Please enter a job ID or job name');
+      setError('Please enter a Evaluation ID or Evaluation name');
       setSearching(false);
     }
   };
