@@ -662,20 +662,26 @@ const Results = () => {
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Evaluation Job</AlertDialogTitle>
+            <AlertDialogTitle>Delete Evaluation</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this evaluation job? This action cannot be undone.
-              {jobStatus && (
-                <div className="mt-3 p-3 bg-gray-50 rounded-md">
-                  <div className="text-sm font-medium">Job Details:</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    <div>Name: {jobStatus.job_name || 'Unnamed Job'}</div>
-                    <div>ID: {jobStatus.job_id}</div>
-                    <div>Status: {jobStatus.status}</div>
-                    <div>Students: {jobStatus.total_students}</div>
+              Are you sure you want to delete this evaluation? This action cannot be undone.
+              {jobStatus && (() => {
+                // Find the job in allEvaluations to get the correct name (same approach as in results list)
+                const currentEvaluation = allEvaluations.find(evaluation => evaluation.job_id === jobStatus.job_id);
+                const evaluationName = currentEvaluation?.job_name || jobStatus.job_name || 'Unnamed Evaluation';
+
+                return (
+                  <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                    <div className="text-sm font-medium">Evaluation Details:</div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      <div>Name: {evaluationName}</div>
+                      <div>ID: {jobStatus.job_id}</div>
+                      <div>Status: {jobStatus.status}</div>
+                      <div>Students: {jobStatus.total_students}</div>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -693,7 +699,7 @@ const Results = () => {
               ) : (
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Job
+                  Delete Evaluation
                 </>
               )}
             </AlertDialogAction>
