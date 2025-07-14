@@ -4,9 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, RefreshCw, CheckCircle, Clock, AlertCircle, Search, X } from 'lucide-react';
+import { Loader2, RefreshCw, CheckCircle, Clock, AlertCircle, Search, X, Trash2 } from 'lucide-react';
 import { apiService, EvaluationResults, JobStatus, JobSearchResult, JobSuggestion } from '@/services/apiService';
 import ResultsTableNew from '@/components/results/ResultsTableNew';
 
@@ -69,6 +70,10 @@ const Results = () => {
   const [allEvaluations, setAllEvaluations] = useState<JobSearchResult[]>([]);
   const [loadingAllEvaluations, setLoadingAllEvaluations] = useState<boolean>(false);
   const [allEvaluationsError, setAllEvaluationsError] = useState<string | null>(null);
+
+  // Delete job state
+  const [deleting, setDeleting] = useState<boolean>(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
 
   // Function to fetch job status and results
   const loadJobData = async (id: string) => {
@@ -322,6 +327,44 @@ const Results = () => {
     }
   };
 
+  // Delete job functionality
+  const handleDeleteJob = async () => {
+    if (!jobId || !jobStatus) return;
+
+    setDeleting(true);
+    try {
+      await apiService.deleteJob(jobId);
+
+      // Clear current job data
+      setJobId('');
+      setSearchInput('');
+      setJobStatus(null);
+      setResults(null);
+      setError(null);
+
+      // Clear URL parameters
+      navigate('/results');
+
+      // Reload all evaluations
+      loadAllEvaluations();
+
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      console.error('Error deleting job:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete job');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false);
+  };
+
   // Render loading state
   if (loading) {
     return (
@@ -346,10 +389,25 @@ const Results = () => {
         <div className="flex items-center gap-4">
           {jobStatus && <StatusBadge status={jobStatus.status} />}
           {jobId && (
-            <Button onClick={handleRefresh} variant="outline" size="sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
+            <>
+              <Button onClick={handleRefresh} variant="outline" size="sm">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+              <Button
+                onClick={handleDeleteClick}
+                variant="destructive"
+                size="sm"
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                {deleting ? 'Deleting...' : 'Delete'}
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -599,6 +657,49 @@ const Results = () => {
           </Card>
         </>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Evaluation Job</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this evaluation job? This action cannot be undone.
+              {jobStatus && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                  <div className="text-sm font-medium">Job Details:</div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    <div>Name: {jobStatus.job_name || 'Unnamed Job'}</div>
+                    <div>ID: {jobStatus.job_id}</div>
+                    <div>Status: {jobStatus.status}</div>
+                    <div>Students: {jobStatus.total_students}</div>
+                  </div>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelDelete}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteJob}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Job
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
