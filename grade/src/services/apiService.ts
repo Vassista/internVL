@@ -127,7 +127,7 @@ class ApiService {
   ): Promise<UploadResponse> {
     try {
       const formData = new FormData();
-      formData.append('model_answer', modelAnswer);
+      formData.append('model_csv', modelAnswer);
       formData.append('student_sheets', studentSheets);
       formData.append('job_name', jobName);
 
@@ -146,16 +146,14 @@ class ApiService {
       console.error('Upload failed:', error);
       throw error;
     }
-  }
-
-  async uploadIndividualImages(
+  }  async uploadIndividualImages(
     modelAnswer: File,
     studentImages: File[],
     jobName: string
   ): Promise<UploadResponse> {
     try {
       const formData = new FormData();
-      formData.append('model_answer', modelAnswer);
+      formData.append('model_csv', modelAnswer);
       studentImages.forEach((file) => {
         formData.append('student_images', file);
       });

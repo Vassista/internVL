@@ -25,8 +25,8 @@ from models.api_models import (
 )
 from utils.api_utils import (
     extract_zip_file, extract_roll_number_from_filename,
-    validate_image_file, parse_ocr_response, compare_answers,
-    calculate_score, create_summary_stats, cleanup_temp_files
+    validate_image_file, validate_csv_file, parse_ocr_response, compare_answers,
+    calculate_score, create_summary_stats, cleanup_temp_files, parse_csv_model_answers
 )
 from database.database import (
     init_database, save_evaluation_job, update_job_progress,
@@ -171,43 +171,43 @@ async def health_check():
 @app.post("/upload/evaluation", response_model=UploadResponse)
 async def upload_evaluation(
     background_tasks: BackgroundTasks,
-    model_answer: UploadFile = File(...),
+    model_csv: UploadFile = File(...),
     student_sheets: UploadFile = File(...),
     job_name: str = Form(...)
 ):
     """
-    Upload model answer and student sheets (ZIP file) for evaluation
+    Upload model answer CSV and student sheets (ZIP file) for evaluation
     """
     # Validate model is loaded
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     # Validate file types
-    if not validate_image_file(model_answer.filename):
-        raise HTTPException(status_code=400, detail="Model answer must be an image file")
+    if not validate_csv_file(model_csv.filename):
+        raise HTTPException(status_code=400, detail="Model answer must be a CSV file")
 
     if not student_sheets.filename.lower().endswith('.zip'):
         raise HTTPException(status_code=400, detail="Student sheets must be a ZIP file")
 
-    return await process_upload(background_tasks, model_answer, None, [student_sheets], job_name, "zip")
+    return await process_upload(background_tasks, model_csv, None, [student_sheets], job_name, "zip")
 
 @app.post("/upload/individual", response_model=UploadResponse)
 async def upload_individual_images(
     background_tasks: BackgroundTasks,
-    model_answer: UploadFile = File(...),
+    model_csv: UploadFile = File(...),
     student_images: List[UploadFile] = File(...),
     job_name: str = Form(...)
 ):
     """
-    Upload model answer and individual student images for evaluation
+    Upload model answer CSV and individual student images for evaluation
     """
     # Validate model is loaded
     if model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     # Validate file types
-    if not validate_image_file(model_answer.filename):
-        raise HTTPException(status_code=400, detail="Model answer must be an image file")
+    if not validate_csv_file(model_csv.filename):
+        raise HTTPException(status_code=400, detail="Model answer must be a CSV file")
 
     # Validate all student images
     for img in student_images:
@@ -220,11 +220,11 @@ async def upload_individual_images(
     if len(student_images) > 50:  # Reasonable limit
         raise HTTPException(status_code=400, detail="Maximum 50 student images allowed")
 
-    return await process_upload(background_tasks, model_answer, student_images, None, job_name, "individual")
+    return await process_upload(background_tasks, model_csv, student_images, None, job_name, "individual")
 
 async def process_upload(
     background_tasks: BackgroundTasks,
-    model_answer: UploadFile,
+    model_csv: UploadFile,
     student_images: List[UploadFile] = None,
     student_zip: List[UploadFile] = None,
     job_name: str = "",
@@ -241,10 +241,10 @@ async def process_upload(
     os.makedirs(job_temp_dir, exist_ok=True)
 
     try:
-        # Save model answer file
-        model_answer_path = os.path.join(job_temp_dir, f"model_answer_{model_answer.filename}")
-        with open(model_answer_path, "wb") as f:
-            content = await model_answer.read()
+        # Save model answer CSV file
+        model_csv_path = os.path.join(job_temp_dir, f"model_answers.csv")
+        with open(model_csv_path, "wb") as f:
+            content = await model_csv.read()
             f.write(content)
 
         student_files = []
@@ -287,7 +287,7 @@ async def process_upload(
             process_evaluation_job,
             job_id,
             job_name,
-            model_answer_path,
+            model_csv_path,
             student_files,
             job_temp_dir,
             upload_type
@@ -437,7 +437,7 @@ async def get_recent_evaluations_endpoint(limit: int = 10):
 async def process_evaluation_job(
     job_id: str,
     job_name: str,
-    model_answer_path: str,
+    model_csv_path: str,
     student_files: List[str],
     temp_dir: str,
     upload_type: str
@@ -448,21 +448,15 @@ async def process_evaluation_job(
     global model, tokenizer
 
     try:
-        # Process model answer first
-        print(f"Processing model answer for job {job_id}")
-        model_df = run_ocr_with_global_model(model_answer_path)
+        # Parse model answers from CSV file
+        print(f"Parsing model answers from CSV for job {job_id}")
+        model_answers = parse_csv_model_answers(model_csv_path)
 
-        if model_df is None or model_df.empty:
-            await complete_evaluation_job(job_id, {}, {}, "Failed to process model answer")
+        if not model_answers:
+            await complete_evaluation_job(job_id, {}, {}, "Failed to parse model answers from CSV")
             return
 
-        # Convert model answers to StudentAnswer objects
-        model_answers = []
-        for _, row in model_df.iterrows():
-            model_answers.append(StudentAnswer(
-                sn=int(row['sn']),
-                answer=str(row['answer'])
-            ))
+        print(f"✅ Successfully parsed {len(model_answers)} model answers from CSV")
 
         # Process each student sheet
         student_results = []

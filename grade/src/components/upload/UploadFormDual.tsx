@@ -58,11 +58,31 @@ const UploadFormDual = () => {
 
   const clearJobState = () => {
     localStorage.removeItem('currentEvaluationJob');
-  };
-
-  const handleModelFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  };  const handleModelFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setModelFile(e.target.files[0]);
+      const file = e.target.files[0];
+
+      // Validate file type
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select a CSV file for model answers",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Validate file size (max 1MB for CSV)
+      if (file.size > 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "CSV file must be smaller than 1MB",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setModelFile(file);
     }
   };
 
@@ -87,7 +107,7 @@ const UploadFormDual = () => {
     if (!modelFile || !jobName.trim()) {
       toast({
         title: "Missing required fields",
-        description: "Please provide job name and model answer sheet",
+        description: "Please provide job name and model answer CSV file",
         variant: "destructive"
       });
       return;
@@ -366,12 +386,12 @@ const UploadFormDual = () => {
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-medium">Model Answer Sheet</label>
+          <label className="block text-sm font-medium">Model Answer CSV File</label>
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
             <input
               type="file"
               id="model-file"
-              accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif"
+              accept=".csv"
               onChange={handleModelFileChange}
               className="hidden"
               disabled={uploading || processing}
@@ -397,8 +417,8 @@ const UploadFormDual = () => {
               ) : (
                 <div className="space-y-2">
                   <FileUp className="h-8 w-8 mx-auto text-gray-400" />
-                  <p className="text-sm text-gray-600">Click to upload model answer sheet</p>
-                  <p className="text-xs text-gray-400">Supports JPG, PNG, BMP, TIFF</p>
+                  <p className="text-sm text-gray-600">Click to upload model answer CSV file</p>
+                  <p className="text-xs text-gray-500">CSV format: sn,answer (e.g., 1,true)</p>
                 </div>
               )}
             </label>

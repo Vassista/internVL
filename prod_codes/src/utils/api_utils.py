@@ -1,4 +1,3 @@
-
 """
 API Utility Functions for InternVL
 """
@@ -8,6 +7,7 @@ import json
 import zipfile
 import tempfile
 import shutil
+import csv
 from typing import List, Dict, Tuple, Optional
 from pathlib import Path
 import pandas as pd
@@ -21,6 +21,10 @@ def validate_image_file(filename: str) -> bool:
     """Check if file is a valid image format"""
     valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
     return Path(filename).suffix.lower() in valid_extensions
+
+def validate_csv_file(filename: str) -> bool:
+    """Check if file is a valid CSV format"""
+    return Path(filename).suffix.lower() == '.csv'
 
 def extract_zip_file(zip_path: str, extract_to: str) -> List[str]:
     """Extract ZIP file and return list of image files"""
@@ -168,3 +172,114 @@ def process_student_files(zip_file_path: Optional[str] = None,
         image_files = sorted(image_files)
 
     return image_files
+
+def parse_csv_model_answers(csv_file_path: str) -> List[StudentAnswer]:
+    """
+    Parse CSV file containing model answers and convert to StudentAnswer objects
+
+    Expected CSV format:
+    sn,answer
+    1,true
+    2,false
+    3,true
+    ...
+
+    Args:
+        csv_file_path (str): Path to the CSV file
+
+    Returns:
+        List[StudentAnswer]: List of model answers
+
+    Raises:
+        ValueError: If CSV format is invalid
+        FileNotFoundError: If CSV file doesn't exist
+    """
+    if not os.path.exists(csv_file_path):
+        raise FileNotFoundError(f"CSV file not found: {csv_file_path}")
+
+    try:
+        model_answers = []
+
+        with open(csv_file_path, 'r', newline='', encoding='utf-8') as csvfile:
+            # Read CSV with proper handling
+            csv_reader = csv.DictReader(csvfile)
+
+            # Validate headers
+            expected_headers = {'sn', 'answer'}
+            actual_headers = set(csv_reader.fieldnames or [])
+
+            if not expected_headers.issubset(actual_headers):
+                missing_headers = expected_headers - actual_headers
+                raise ValueError(f"Invalid CSV format. Missing required headers: {missing_headers}")
+
+            # Track question numbers to validate sequence
+            question_numbers = []
+
+            for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 because of header
+                try:
+                    # Validate and parse sn (serial number)
+                    sn_str = row['sn'].strip() if row['sn'] else ''
+                    if not sn_str:
+                        raise ValueError(f"Row {row_num}: 'sn' field is empty")
+
+                    try:
+                        sn = int(sn_str)
+                    except ValueError:
+                        raise ValueError(f"Row {row_num}: 'sn' must be a number, got '{sn_str}'")
+
+                    if sn < 1 or sn > 50:  # Allow up to 50 questions
+                        raise ValueError(f"Row {row_num}: 'sn' must be between 1 and 50, got {sn}")
+
+                    question_numbers.append(sn)
+
+                    # Validate and parse answer
+                    answer = row['answer'].strip().lower() if row['answer'] else ''
+                    if not answer:
+                        raise ValueError(f"Row {row_num}: 'answer' field is empty")
+
+                    # Validate answer format (must match InternVL expected values)
+                    valid_answers = {'true', 'false', 't', 'f', 'na'}
+                    if answer not in valid_answers:
+                        raise ValueError(f"Row {row_num}: Invalid answer '{row['answer']}'. Must be one of: true, false, t, f, NA")
+
+                    # Create StudentAnswer object
+                    model_answers.append(StudentAnswer(sn=sn, answer=answer))
+
+                except KeyError as e:
+                    raise ValueError(f"Row {row_num}: Missing required field {e}")
+                except Exception as e:
+                    raise ValueError(f"Row {row_num}: {str(e)}")
+
+            # Validate we have answers
+            if not model_answers:
+                raise ValueError("CSV file contains no valid answers")
+
+            # Validate question sequence (must be 1, 2, 3, ... n)
+            question_numbers.sort()
+            expected_sequence = list(range(1, len(question_numbers) + 1))
+
+            if question_numbers != expected_sequence:
+                missing_numbers = set(expected_sequence) - set(question_numbers)
+                duplicate_numbers = [num for num in question_numbers if question_numbers.count(num) > 1]
+
+                error_msg = "Invalid question sequence."
+                if missing_numbers:
+                    error_msg += f" Missing question numbers: {sorted(missing_numbers)}"
+                if duplicate_numbers:
+                    error_msg += f" Duplicate question numbers: {sorted(set(duplicate_numbers))}"
+
+                raise ValueError(error_msg)
+
+            # Validate exactly 10 questions (matching InternVL constraint)
+            if len(model_answers) != 10:
+                raise ValueError(f"CSV must contain exactly 10 questions, found {len(model_answers)}")
+
+            print(f"✅ Successfully parsed {len(model_answers)} model answers from CSV")
+            return model_answers
+
+    except csv.Error as e:
+        raise ValueError(f"Invalid CSV file format: {str(e)}")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"Unable to read CSV file. Please ensure it's saved as UTF-8: {str(e)}")
+    except Exception as e:
+        raise ValueError(f"Error parsing CSV file: {str(e)}")
