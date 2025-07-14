@@ -342,31 +342,9 @@ async def get_evaluation_results(job_id: str):
     # Get student evaluations
     students = await get_student_evaluations(job_id)
 
-    # Parse results and summary stats from job with error handling
-    results = []
-    summary_stats = {}
-
-    # Handle results field
-    if job["results"]:
-        if isinstance(job["results"], str) and job["results"].strip():
-            try:
-                results = json.loads(job["results"])
-            except json.JSONDecodeError as e:
-                print(f"Warning: Could not parse job results JSON: {e}")
-                results = []
-        elif isinstance(job["results"], list):
-            results = job["results"]
-
-    # Handle summary_stats field
-    if job["summary_stats"]:
-        if isinstance(job["summary_stats"], str) and job["summary_stats"].strip():
-            try:
-                summary_stats = json.loads(job["summary_stats"])
-            except json.JSONDecodeError as e:
-                print(f"Warning: Could not parse job summary_stats JSON: {e}")
-                summary_stats = {}
-        elif isinstance(job["summary_stats"], dict):
-            summary_stats = job["summary_stats"]
+    # Parse results and summary stats from job (already parsed by database layer)
+    results = job.get("results", []) or []
+    summary_stats = job.get("summary_stats", {}) or {}
 
     return EvaluationResults(
         job_id=job_id,
