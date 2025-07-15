@@ -107,3 +107,21 @@ package-lock.json
 .config/pulse/cookie
 prod_codes/view_db.py
 .psql_history
+
+#Server Files
+/DATA1/vassist/.bun
+/DATA1/vassist/.cache
+/DATA1/vassist/.config
+/DATA1/vassist/.dotnet
+/DATA1/vassist/.local
+/DATA1/vassist/.npm
+/DATA1/vassist/.nv
+/DATA1/vassist/.vscode-server
+/DATA1/vassist/.bash_history
+/DATA1/vassist/.bash_logout
+/DATA1/vassist/.bash_logout
+/DATA1/vassist/.bashrc
+/DATA1/vassist/.profile
+/DATA1/vassist/.psql_history
+/DATA1/vassist/.wget-hsts
+/DATA1/vassist/package-lock.json
