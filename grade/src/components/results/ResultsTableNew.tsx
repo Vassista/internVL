@@ -12,12 +12,14 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { StudentResult } from '@/services/apiService';
+import ExportButton from './ExportButton';
 
 interface ResultsTableProps {
   results: StudentResult[];
+  modelAnswers: { [key: string]: string };
 }
 
-const ResultsTable: React.FC<ResultsTableProps> = ({ results }) => {
+const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<StudentResult | null>(null);
 
@@ -120,6 +122,22 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results }) => {
               Detailed answer breakdown for this student
             </DialogDescription>
           </DialogHeader>
+
+          {selectedStudent && (
+            <ExportButton
+              data={[
+                ["Question", "Student Answer", "Model Answer"],
+                ...selectedStudent.answers.map(answer => [
+                  answer.sn,
+                  answer.answer,
+                  modelAnswers[answer.sn] || "N/A"
+                ])
+              ]}
+              fileName={`student-answers-${selectedStudent.roll_number}`}
+              sheetName="Student Answers"
+              buttonText="Export Answers"
+            />
+          )}
 
           {selectedStudent && (
             <div className="space-y-4">

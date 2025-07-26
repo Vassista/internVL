@@ -64,6 +64,7 @@ const Results = () => {
   const [loadingSuggestions, setLoadingSuggestions] = useState<boolean>(false);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [results, setResults] = useState<EvaluationResults | null>(null);
+  const [modelAnswers, setModelAnswers] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +102,15 @@ const Results = () => {
         const evaluationResults = await apiService.getResults(id);
         console.log('Results:', evaluationResults);
         setResults(evaluationResults);
+
+        // Extract model answers
+        const answers: { [key: string]: string } = {};
+        if (evaluationResults.model_answers) {
+          for (const answer of evaluationResults.model_answers) {
+            answers[answer.sn] = answer.answer;
+          }
+        }
+        setModelAnswers(answers);
       }
     } catch (err) {
       console.error('Error loading job data:', err);
@@ -396,7 +406,21 @@ const Results = () => {
                 Refresh
               </Button>
               {results && results.student_results && (
-                <ExportButton results={results.student_results} jobName={jobStatus?.job_name || 'export'} />
+                <ExportButton
+                  data={[
+                    ["Roll Number", "Score", "Total Questions", "Percentage", "Status"],
+                    ...results.student_results.map(result => [
+                      result.roll_number,
+                      result.score,
+                      result.total_questions,
+                      result.percentage,
+                      result.status
+                    ])
+                  ]}
+                  fileName={`student-results-${jobStatus?.job_name.replace(/\s+/g, '-') || 'export'}`}
+                  sheetName="Student Results"
+                  buttonText="Export All Results"
+                />
               )}
               <Button
                 onClick={handleDeleteClick}
@@ -656,7 +680,7 @@ const Results = () => {
               <CardTitle>Student Results</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResultsTableNew results={results.student_results} />
+              <ResultsTableNew results={results.student_results} modelAnswers={modelAnswers} />
             </CardContent>
           </Card>
         </>
