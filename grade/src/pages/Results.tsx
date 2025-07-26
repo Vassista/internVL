@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2, RefreshCw, CheckCircle, Clock, AlertCircle, Search, X, Trash2 } from 'lucide-react';
 import { apiService, EvaluationResults, JobStatus, JobSearchResult, JobSuggestion } from '@/services/apiService';
 import ResultsTableNew from '@/components/results/ResultsTableNew';
+import ExportButton from '@/components/results/ExportButton';
 
 // Status badge component
 const StatusBadge = ({ status }: { status: string }) => {
@@ -394,6 +395,9 @@ const Results = () => {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
+              {results && results.student_results && (
+                <ExportButton results={results.student_results} jobName={jobStatus?.job_name || 'export'} />
+              )}
               <Button
                 onClick={handleDeleteClick}
                 variant="destructive"
