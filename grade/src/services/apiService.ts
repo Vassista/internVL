@@ -177,7 +177,7 @@ class ApiService {
   }
 
   async getJobStatus(jobId: string): Promise<JobStatus> {
-    // Create an AbortController for timeout (increased for processing jobs)
+    // Create an AbortController for timeout 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
@@ -219,7 +219,7 @@ class ApiService {
 
     // Create an AbortController for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // Increased to 8 seconds for better UX when server is busy
+    const timeoutId = setTimeout(() => controller.abort(), 8000); 
 
     try {
       const response = await fetch(url, {
