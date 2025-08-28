@@ -1,5 +1,5 @@
 /**
- * API Service for Grade Genius
+ * API Service for InternVL
  * Handles communication with FastAPI backend
  */
 
