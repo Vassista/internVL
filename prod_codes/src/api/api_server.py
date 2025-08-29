@@ -13,15 +13,18 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import torch
 import uvicorn
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 from utils.autoeval_ocr import load_model_and_tokenizer, run_internvl_ocr, post_process_response
 from models.api_models import (
     HealthResponse, UploadResponse, JobStatus,
-    EvaluationResults, StudentResult, StudentAnswer
+    EvaluationResults, StudentResult, StudentAnswer,
+    User, LoginRequest, LoginResponse, UserManagementRequest, AdminStats
 )
 from utils.api_utils import (
     extract_zip_file, extract_roll_number_from_filename,
@@ -32,7 +35,8 @@ from database.database import (
     init_database, save_evaluation_job, update_job_progress,
     complete_evaluation_job, save_student_evaluation,
     get_evaluation_job, get_student_evaluations, get_all_evaluation_jobs,
-    get_dashboard_statistics, get_recent_evaluations, delete_evaluation_job
+    get_dashboard_statistics, get_recent_evaluations, delete_evaluation_job,
+    get_or_create_user, get_user_by_id, get_all_users, update_user_role, toggle_user_status
 )
 
 
@@ -55,6 +59,80 @@ tokenizer = None
 UPLOAD_DIR = "temp_uploads"
 MAX_FILE_SIZE = 100 * 1024 * 1024
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+
+# Google JWT verification
+import jwt
+from jwt import PyJWTError
+import requests
+
+def verify_google_token(token: str) -> dict:
+    """Verify Google JWT token and return user info"""
+
+    # For development/testing purposes - bypass verification for test tokens
+    if token == "test_admin_token":
+        return {
+            'email': 'admin@test.com',
+            'name': 'Test Admin',
+            'picture': '',
+            'sub': 'test_admin_id',
+            'role': 'admin'
+        }
+    elif token == "test_user_token":
+        return {
+            'email': 'user@test.com',
+            'name': 'Test User',
+            'picture': '',
+            'sub': 'test_user_id',
+            'role': 'user'
+        }
+
+    try:
+        # Use Google's built-in verification for real tokens
+        CLIENT_ID = "785901153005-4igf1m6v4cptnl6utaml3bivga1f1ovq.apps.googleusercontent.com"
+
+        # Verify the token
+        idinfo = id_token.verify_oauth2_token(
+            token,
+            google_requests.Request(),
+            CLIENT_ID
+        )
+
+        # Verify the issuer
+        if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+            raise ValueError('Wrong issuer.')
+
+        return idinfo
+
+    except Exception as e:
+        print(f"Token verification failed: {e}")
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+
+# Authentication middleware
+from typing import Optional
+
+async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
+    """Get current user from Authorization header"""
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    token = authorization.split(' ')[1]
+    user_info = verify_google_token(token)
+
+    # Get or create user in database
+    user = await get_or_create_user(
+        email=user_info['email'],
+        name=user_info['name'],
+        picture=user_info.get('picture'),
+        role=user_info.get('role', 'user')
+    )
+
+    return user
+
+async def get_admin_user(current_user: dict = Depends(get_current_user)) -> dict:
+    """Ensure current user is admin"""
+    if current_user['role'] != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 def fix_json_response(response_text: str) -> str:
     """Fix common JSON formatting issues in InternVL responses."""
     cleaned = response_text.strip()
@@ -168,12 +246,106 @@ async def health_check():
         timestamp=datetime.now()
     )
 
+# Authentication endpoints
+@app.post("/auth/login", response_model=LoginResponse)
+async def login(request: LoginRequest):
+    """Login with Google credential"""
+    try:
+        user_info = verify_google_token(request.credential)
+
+        # Get or create user in database
+        user = await get_or_create_user(
+            email=user_info['email'],
+            name=user_info['name'],
+            picture=user_info.get('picture'),
+            role=user_info.get('role', 'user')
+        )
+
+        return LoginResponse(
+            user=User(**user),
+            message="Login successful"
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+@app.get("/auth/me", response_model=User)
+async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    """Get current user information"""
+    return User(**current_user)
+
+# Admin endpoints
+@app.get("/admin/users", response_model=List[User])
+async def get_all_users_admin(admin_user: dict = Depends(get_admin_user)):
+    """Get all users (admin only)"""
+    users = await get_all_users()
+    return [User(**user) for user in users]
+
+@app.get("/admin/stats", response_model=AdminStats)
+async def get_admin_stats(admin_user: dict = Depends(get_admin_user)):
+    """Get admin dashboard statistics"""
+    # Get all users
+    users = await get_all_users()
+
+    # Get all jobs for stats
+    all_jobs = await get_all_evaluation_jobs(user_role="admin")
+
+    # Calculate stats
+    total_users = len(users)
+    active_users = len([u for u in users if u['is_active']])
+    total_evaluations = len(all_jobs)
+
+    # Count evaluations today
+    today = datetime.now().date()
+    evaluations_today = len([
+        job for job in all_jobs
+        if datetime.fromisoformat(job['created_at']).date() == today
+    ])
+
+    # Count users by role
+    users_by_role = {}
+    for user in users:
+        role = user['role']
+        users_by_role[role] = users_by_role.get(role, 0) + 1
+
+    return AdminStats(
+        total_users=total_users,
+        active_users=active_users,
+        total_evaluations=total_evaluations,
+        evaluations_today=evaluations_today,
+        users_by_role=users_by_role
+    )
+
+@app.post("/admin/users/manage")
+async def manage_user(request: UserManagementRequest, admin_user: dict = Depends(get_admin_user)):
+    """Manage user (admin only)"""
+    if request.action == "toggle_status":
+        success = await toggle_user_status(request.user_id)
+        if success:
+            return {"message": "User status updated successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    elif request.action == "change_role":
+        if not request.new_role or request.new_role not in ['user', 'admin']:
+            raise HTTPException(status_code=400, detail="Invalid role")
+
+        success = await update_user_role(request.user_id, request.new_role)
+        if success:
+            return {"message": "User role updated successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
 @app.post("/upload/evaluation", response_model=UploadResponse)
 async def upload_evaluation(
     background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
     model_csv: UploadFile = File(...),
     student_sheets: UploadFile = File(...),
-    job_name: str = Form(...)
+    job_name: str = Form(None)
 ):
     """
     Upload model answer CSV and student sheets (ZIP file) for evaluation
@@ -189,14 +361,15 @@ async def upload_evaluation(
     if not student_sheets.filename.lower().endswith('.zip'):
         raise HTTPException(status_code=400, detail="Student sheets must be a ZIP file")
 
-    return await process_upload(background_tasks, model_csv, None, [student_sheets], job_name, "zip")
+    return await process_upload(background_tasks, model_csv, None, [student_sheets], job_name, "zip", current_user['id'])
 
 @app.post("/upload/individual", response_model=UploadResponse)
 async def upload_individual_images(
     background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
     model_csv: UploadFile = File(...),
     student_images: List[UploadFile] = File(...),
-    job_name: str = Form(...)
+    job_name: str = Form(None)
 ):
     """
     Upload model answer CSV and individual student images for evaluation
@@ -220,7 +393,7 @@ async def upload_individual_images(
     if len(student_images) > 50:  # Reasonable limit
         raise HTTPException(status_code=400, detail="Maximum 50 student images allowed")
 
-    return await process_upload(background_tasks, model_csv, student_images, None, job_name, "individual")
+    return await process_upload(background_tasks, model_csv, student_images, None, job_name, "individual", current_user['id'])
 
 async def process_upload(
     background_tasks: BackgroundTasks,
@@ -228,7 +401,8 @@ async def process_upload(
     student_images: List[UploadFile] = None,
     student_zip: List[UploadFile] = None,
     job_name: str = "",
-    upload_type: str = "zip"
+    upload_type: str = "zip",
+    user_id: int = None
 ):
     """
     Common upload processing for both ZIP and individual image uploads
@@ -280,7 +454,7 @@ async def process_upload(
             raise HTTPException(status_code=400, detail="Invalid upload configuration")
 
         # Save job to database
-        await save_evaluation_job(job_id, job_name, len(student_files))
+        await save_evaluation_job(job_id, job_name, len(student_files), user_id)
 
         # Start background processing
         background_tasks.add_task(
@@ -307,10 +481,10 @@ async def process_upload(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @app.get("/evaluation/{job_id}/status", response_model=JobStatus)
-async def get_evaluation_status(job_id: str):
+async def get_evaluation_status(job_id: str, current_user: dict = Depends(get_current_user)):
     """Get the status of an evaluation job"""
 
-    job = await get_evaluation_job(job_id)
+    job = await get_evaluation_job(job_id, current_user['id'], current_user['role'])
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -326,10 +500,10 @@ async def get_evaluation_status(job_id: str):
     )
 
 @app.get("/results/{job_id}", response_model=EvaluationResults)
-async def get_evaluation_results(job_id: str):
+async def get_evaluation_results(job_id: str, current_user: dict = Depends(get_current_user)):
     """Get the results of a completed evaluation job"""
 
-    job = await get_evaluation_job(job_id)
+    job = await get_evaluation_job(job_id, current_user['id'], current_user['role'])
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -359,10 +533,10 @@ async def get_evaluation_results(job_id: str):
     )
 
 @app.get("/jobs/suggestions")
-async def get_job_suggestions(limit: int = 10):
+async def get_job_suggestions(current_user: dict = Depends(get_current_user), limit: int = 10):
     """Get recent job suggestions for search autocomplete"""
 
-    jobs = await get_all_evaluation_jobs()
+    jobs = await get_all_evaluation_jobs(current_user['id'], current_user['role'])
 
     # Limit results
     jobs = jobs[:limit]
@@ -384,11 +558,11 @@ async def get_job_suggestions(limit: int = 10):
     }
 
 @app.get("/jobs/search")
-async def search_jobs(query: Optional[str] = None, limit: int = 20):
+async def search_jobs(current_user: dict = Depends(get_current_user), query: Optional[str] = None, limit: int = 20):
     """Search for jobs by name or list all jobs"""
 
     # Get all jobs from database
-    jobs = await get_all_evaluation_jobs()
+    jobs = await get_all_evaluation_jobs(current_user['id'], current_user['role'])
 
     # Filter by query if provided
     if query:
@@ -422,17 +596,17 @@ async def search_jobs(query: Optional[str] = None, limit: int = 20):
     }
 
 @app.get("/dashboard/stats")
-async def get_dashboard_stats():
+async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     """Get dashboard statistics"""
 
-    stats = await get_dashboard_statistics()
+    stats = await get_dashboard_statistics(current_user['id'], current_user['role'])
     return stats
 
 @app.get("/dashboard/recent")
-async def get_recent_evaluations_endpoint(limit: int = 10):
+async def get_recent_evaluations_endpoint(current_user: dict = Depends(get_current_user), limit: int = 10):
     """Get recent evaluations for dashboard"""
 
-    recent_jobs = await get_recent_evaluations(limit)
+    recent_jobs = await get_recent_evaluations(current_user['id'], current_user['role'], limit)
     return {"recent_jobs": recent_jobs}
 
 async def process_evaluation_job(
