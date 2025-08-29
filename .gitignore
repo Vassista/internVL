@@ -125,3 +125,9 @@ prod_codes/view_db.py
 /DATA1/vassist/.psql_history
 /DATA1/vassist/.wget-hsts
 /DATA1/vassist/package-lock.json
+prod_codes/test.csv
+/DATA1/vassist/grade/.env
+prod_codes/check_users.py
+prod_codes/clear_database.py
+prod_codes/make_admin.py
+prod_codes/update_role_direct.py
