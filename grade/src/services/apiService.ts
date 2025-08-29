@@ -110,6 +110,58 @@ export interface JobSuggestionsResponse {
 }
 
 class ApiService {
+  private authToken: string | null = null;
+
+  setAuthToken(token: string | null) {
+    this.authToken = token;
+  }
+
+  private getAuthHeaders(): HeadersInit {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+
+    return headers;
+  }
+
+  private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
+    const defaultHeaders = this.getAuthHeaders();
+
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error (${response.status}): ${errorText}`);
+    }
+
+    return response.json();
+  }
+
+  async get(url: string): Promise<any> {
+    return this.makeRequest(url, { method: 'GET' });
+  }
+
+  async post(url: string, data?: any): Promise<any> {
+    return this.makeRequest(url, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async delete(url: string): Promise<any> {
+    return this.makeRequest(url, { method: 'DELETE' });
+  }
+
   async checkHealth() {
     try {
       const response = await fetch(`${API_BASE_URL}/health`);
@@ -131,8 +183,14 @@ class ApiService {
       formData.append('student_sheets', studentSheets);
       formData.append('job_name', jobName);
 
+      const headers: HeadersInit = {};
+      if (this.authToken) {
+        headers['Authorization'] = `Bearer ${this.authToken}`;
+      }
+
       const response = await fetch(`${API_BASE_URL}/upload/evaluation`, {
         method: 'POST',
+        headers,
         body: formData,
       });
 
@@ -159,8 +217,14 @@ class ApiService {
       });
       formData.append('job_name', jobName);
 
+      const headers: HeadersInit = {};
+      if (this.authToken) {
+        headers['Authorization'] = `Bearer ${this.authToken}`;
+      }
+
       const response = await fetch(`${API_BASE_URL}/upload/individual`, {
         method: 'POST',
+        headers,
         body: formData,
       });
 
@@ -177,190 +241,62 @@ class ApiService {
   }
 
   async getJobStatus(jobId: string): Promise<JobStatus> {
-    // Create an AbortController for timeout (increased for processing jobs)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-    const response = await fetch(`${API_BASE_URL}/evaluation/${jobId}/status`, {
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Failed to get job status: ${response.statusText}`);
-    }
-
-    return await response.json();
+    return this.get(`/evaluation/${jobId}/status`);
   }
 
   async getResults(jobId: string): Promise<EvaluationResults> {
-    // Create an AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
-
-    const response = await fetch(`${API_BASE_URL}/results/${jobId}`, {
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Failed to get results: ${response.statusText}`);
-    }
-
-    return await response.json();
+    return this.get(`/results/${jobId}`);
   }
 
   async searchJobs(query?: string): Promise<JobSearchResponse> {
     const url = query
-      ? `${API_BASE_URL}/jobs/search?q=${encodeURIComponent(query)}`
-      : `${API_BASE_URL}/jobs/search`;
+      ? `/jobs/search?q=${encodeURIComponent(query)}`
+      : `/jobs/search`;
 
-    // Create an AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // Increased to 8 seconds for better UX when server is busy
-
-    try {
-      const response = await fetch(url, {
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        // Handle server busy/timeout gracefully
-        if (response.status === 503 || response.status === 504) {
-          throw new Error('Server is currently busy processing evaluations. Please try again in a moment.');
-        }
-        throw new Error(`Failed to search jobs: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Search request timed out. The server may be busy with evaluations.');
-      }
-
-      throw error;
-    }
+    return this.get(url);
   }
 
   async getAllEvaluations(limit: number = 20): Promise<JobSearchResponse> {
-    // Create an AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/jobs/search?limit=${limit}`, {
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        if (response.status === 503 || response.status === 504) {
-          throw new Error('Server is currently busy processing evaluations. Please try again in a moment.');
-        }
-        throw new Error(`Failed to get evaluations: ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Request timed out. The server may be busy with evaluations.');
-      }
-
-      throw error;
-    }
+    return this.get(`/jobs/search?limit=${limit}`);
   }
 
   async getDashboardStats(): Promise<DashboardStats> {
-    // Create an AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-    const response = await fetch(`${API_BASE_URL}/dashboard/stats`, {
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Failed to get dashboard stats: ${response.statusText}`);
-    }
-
-    return await response.json();
+    return this.get('/dashboard/stats');
   }
 
   async getRecentEvaluations(limit: number = 10): Promise<RecentEvaluation[]> {
-    // Create an AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-    const response = await fetch(`${API_BASE_URL}/dashboard/recent?limit=${limit}`, {
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Failed to get recent evaluations: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    const data = await this.get(`/dashboard/recent?limit=${limit}`);
     return data.recent_jobs || [];
   }
 
   async deleteJob(jobId: string): Promise<void> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete job: ${response.statusText}`);
-      }
-    } catch (error) {
-      console.error('Delete job failed:', error);
-      throw error;
-    }
+    await this.delete(`/jobs/${jobId}`);
   }
 
   async getJobSuggestions(limit: number = 10): Promise<JobSuggestionsResponse> {
-    // Create an AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    return this.get(`/jobs/suggestions?limit=${limit}`);
+  }
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/jobs/suggestions?limit=${limit}`, {
-        signal: controller.signal
-      });
+  // Admin-only methods
+  async getAdminUsers(): Promise<any[]> {
+    return this.get('/admin/users');
+  }
 
-      clearTimeout(timeoutId);
+  async getAdminStats(): Promise<any> {
+    return this.get('/admin/stats');
+  }
 
-      if (!response.ok) {
-        // Handle server busy/timeout gracefully for suggestions
-        if (response.status === 503 || response.status === 504) {
-          throw new Error('Server is currently busy processing evaluations.');
-        }
-        throw new Error(`Failed to get job suggestions: ${response.statusText}`);
-      }
+  async manageUser(userId: number, action: string, newRole?: string): Promise<void> {
+    const payload: any = {
+      user_id: userId,
+      action: action
+    };
 
-      return await response.json();
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Request timed out. The server may be busy with evaluations.');
-      }
-
-      throw error;
+    if (newRole) {
+      payload.new_role = newRole;
     }
+
+    return this.post('/admin/users/manage', payload);
   }
 }
 

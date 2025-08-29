@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiService } from '../services/apiService';
 
 type User = {
   email: string;
@@ -44,21 +45,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
-    if (storedUser) {
+    const storedToken = localStorage.getItem('authToken');
+
+    if (storedUser && storedToken) {
       try {
         const userData = JSON.parse(storedUser);
         // Validate that the user data has the expected structure
         if (userData && typeof userData === 'object' && userData.email) {
           setUser(userData);
           setIsAuthenticated(true);
+          apiService.setAuthToken(storedToken);
         } else {
           // Clear invalid user data
           console.warn('Invalid user data found in localStorage, clearing...');
           localStorage.removeItem('user');
+          localStorage.removeItem('authToken');
         }
       } catch (error) {
         console.error('Error parsing stored user data:', error);
         localStorage.removeItem('user');
+        localStorage.removeItem('authToken');
       }
     }
     setIsLoading(false);
@@ -66,19 +72,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const loginWithGoogle = async (credential: string) => {
     try {
-      const decoded = decodeGoogleJWT(credential);
-      if (decoded) {
-        const userData: User = {
-          email: decoded.email,
-          name: decoded.name,
-          picture: decoded.picture,
-          role: 'TEACHER'
-        };
+      // Call the backend login endpoint
+      const response = await fetch('http://localhost:8000/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ credential }),
+      });
 
-        localStorage.setItem('user', JSON.stringify(userData));
-        setUser(userData);
-        setIsAuthenticated(true);
+      if (!response.ok) {
+        throw new Error('Login failed');
       }
+
+      const loginResponse = await response.json();
+      const userData: User = {
+        email: loginResponse.user.email,
+        name: loginResponse.user.name,
+        picture: loginResponse.user.picture,
+        role: loginResponse.user.role
+      };
+
+      // Store user data and token
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('authToken', credential);
+
+      // Set authentication token in API service
+      apiService.setAuthToken(credential);
+
+      setUser(userData);
+      setIsAuthenticated(true);
     } catch (error) {
       console.error('Error during Google login:', error);
       throw error;
@@ -87,6 +110,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const logout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('authToken');
+    apiService.setAuthToken(null);
     setUser(null);
     setIsAuthenticated(false);
     navigate('/');
