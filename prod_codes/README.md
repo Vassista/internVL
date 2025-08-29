@@ -1,4 +1,4 @@
-# Grade Genius API Documentation
+# InternVL API Documentation
 
 ## Overview
 FastAPI server for automated answer sheet evaluation using InternVL computer vision model.

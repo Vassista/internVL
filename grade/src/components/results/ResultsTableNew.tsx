@@ -126,19 +126,19 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) =>
           {selectedStudent && (
             <div className="space-y-4">
               <div className="flex justify-end">
-                <ExportButton
-                  data={[
-                    ["Question", "Student Answer", "Model Answer"],
-                    ...selectedStudent.answers.map(answer => [
-                      answer.sn,
-                      answer.answer,
-                      modelAnswers[answer.sn] || "N/A"
-                    ])
-                  ]}
-                  fileName={`student-answers-${selectedStudent.roll_number}`}
-                  sheetName="Student Answers"
-                  buttonText="Export Answers"
-                />
+                  <ExportButton
+                    data={[
+                      ["Question", "Student Answer", "Model Answer"],
+                      ...selectedStudent.answers.map(answer => [
+                        answer.sn,
+                        answer.answer,
+                        modelAnswers[String(answer.sn)] || "N/A"
+                      ])
+                    ]}
+                    fileName={`student-answers-${selectedStudent.roll_number}`}
+                    sheetName="Student Answers"
+                    buttonText="Export Answers"
+                  />
               </div>
               {/* Summary */}
               <div className="grid grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
