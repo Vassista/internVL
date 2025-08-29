@@ -408,7 +408,15 @@ const Results = () => {
               {results && results.student_results && (
                 <ExportButton
                   data={[
-                    ["Roll Number", "Score", "Total Questions", "Percentage", "Status"],
+                    // Header row
+                    [
+                      "Roll Number",
+                      "Score",
+                      "Total Questions",
+                      "Percentage",
+                      "Status"
+                    ],
+                    // Student results
                     ...results.student_results.map(result => [
                       result.roll_number,
                       result.score,
@@ -417,7 +425,7 @@ const Results = () => {
                       result.status
                     ])
                   ]}
-                  fileName={`student-results-${jobStatus?.job_name.replace(/\s+/g, '-') || 'export'}`}
+                  fileName={`student-results-${jobStatus?.job_name?.replace(/\s+/g, '-') || 'export'}`}
                   sheetName="Student Results"
                   buttonText="Export All Results"
                 />
