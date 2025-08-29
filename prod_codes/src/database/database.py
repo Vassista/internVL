@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, DateTime, Text, Float, Integer, JSON
+from sqlalchemy import String, DateTime, Text, Float, Integer, JSON, delete
 import json
 import os
 from dotenv import load_dotenv
@@ -218,6 +218,38 @@ async def toggle_user_status(user_id: int) -> bool:
             await session.commit()
             return True
         return False
+
+async def delete_user_and_data(user_id: int) -> bool:
+    """Delete a user and all of their associated data (jobs, student evaluations)."""
+    async with async_session() as session:
+        from sqlalchemy import select
+
+        # Ensure user exists
+        user = await session.get(User, user_id)
+        if not user:
+            return False
+
+        # Get all job ids for the user
+        result = await session.execute(
+            select(EvaluationJob.id).where(EvaluationJob.user_id == user_id)
+        )
+        job_ids = [row[0] for row in result.all()]
+
+        # Delete student evaluations for those jobs
+        if job_ids:
+            await session.execute(
+                delete(StudentEvaluation).where(StudentEvaluation.job_id.in_(job_ids))
+            )
+
+            # Delete the jobs themselves
+            await session.execute(
+                delete(EvaluationJob).where(EvaluationJob.id.in_(job_ids))
+            )
+
+        # Finally delete the user
+        await session.delete(user)
+        await session.commit()
+        return True
 
 async def update_job_progress(job_id: str, processed_files: int) -> None:
     """Update job progress"""

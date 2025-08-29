@@ -4,7 +4,8 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { useAuth } from '../lib/AuthContext';
+import { Link } from 'react-router-dom';
+import { useAuth } from '@/lib/AuthContext';
 import { apiService } from '../services/apiService';
 
 interface User {
@@ -34,6 +35,9 @@ export default function Admin() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [jobQuery, setJobQuery] = useState('');
+  const [jobStatus, setJobStatus] = useState<'all'|'processing'|'completed'|'failed'>('all');
 
   // Check if user is admin
   if (!authUser || authUser.role !== 'admin') {
@@ -59,11 +63,14 @@ export default function Admin() {
 
       const [usersResponse, statsResponse] = await Promise.all([
         apiService.getAdminUsers(),
-        apiService.getAdminStats()
+  apiService.getAdminStats()
       ]);
 
       setUsers(usersResponse);
       setStats(statsResponse);
+  // Also load jobs for admin view
+  const jobsResp = await apiService.getAllEvaluations(200);
+  setJobs(jobsResp.jobs || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load admin data');
     } finally {
@@ -200,9 +207,10 @@ export default function Admin() {
         </div>
       )}
 
-      <Tabs defaultValue="users" className="w-full">
+    <Tabs defaultValue="users" className="w-full">
         <TabsList>
           <TabsTrigger value="users">User Management</TabsTrigger>
+      <TabsTrigger value="evaluations">Evaluations</TabsTrigger>
           <TabsTrigger value="settings">System Settings</TabsTrigger>
         </TabsList>
 
@@ -288,6 +296,32 @@ export default function Admin() {
                             Remove Admin
                           </Button>
                         )}
+
+                        {/* Delete user - irreversible */}
+                        {userItem.email !== authUser.email && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={async () => {
+                              const confirmed = window.confirm(
+                                `Delete user ${userItem.email}? This will remove all their evaluations, logs, and access. This cannot be undone.`
+                              );
+                              if (!confirmed) return;
+                              try {
+                                setActionLoading(`delete-${userItem.id}`);
+                                await apiService.deleteUser(userItem.id);
+                                await loadAdminData();
+                              } catch (err: any) {
+                                setError(err.message || 'Failed to delete user');
+                              } finally {
+                                setActionLoading(null);
+                              }
+                            }}
+                            disabled={actionLoading === `delete-${userItem.id}`}
+                          >
+                            Delete User
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -324,6 +358,92 @@ export default function Admin() {
                     AI evaluation model is loaded and ready for processing.
                   </p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Evaluations Tab */}
+        <TabsContent value="evaluations" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <CardTitle>All Evaluations</CardTitle>
+                  <CardDescription>Search and manage all evaluation jobs</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={jobQuery}
+                    onChange={(e) => setJobQuery(e.target.value)}
+                    placeholder="Search by job id or name"
+                    className="w-64 px-3 py-2 border rounded-md text-sm"
+                  />
+                  <select
+                    value={jobStatus}
+                    onChange={(e) => setJobStatus(e.target.value as any)}
+                    className="px-3 py-2 border rounded-md text-sm"
+                  >
+                    <option value="all">All</option>
+                    <option value="processing">Processing</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {jobs
+                  .filter(j => {
+                    // filter by query
+                    const q = jobQuery.trim().toLowerCase();
+                    const matchesQuery = !q || j.job_id?.toLowerCase().includes(q) || j.job_name?.toLowerCase().includes(q);
+                    // filter by status
+                    const matchesStatus = jobStatus === 'all' || j.status === jobStatus;
+                    return matchesQuery && matchesStatus;
+                  })
+                  .map((j) => (
+                  <div key={j.job_id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium">{j.job_name}</div>
+                      <div className="text-xs text-muted-foreground">ID: {j.job_id}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {j.processed_students}/{j.total_students} processed • {new Date(j.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={j.status === 'completed' ? 'default' : j.status === 'failed' ? 'destructive' : 'secondary'}>
+                        {j.status}
+                      </Badge>
+                      <Link to={`/results/${j.job_id}`} className="text-sm px-3 py-2 border rounded-md">View</Link>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const confirmed = window.confirm('Delete this evaluation job? This cannot be undone.');
+                          if (!confirmed) return;
+                          try {
+                            setActionLoading(`delete-job-${j.job_id}`);
+                            await apiService.deleteJob(j.job_id);
+                            const jobsResp = await apiService.getAllEvaluations(200);
+                            setJobs(jobsResp.jobs || []);
+                          } catch (err: any) {
+                            setError(err.message || 'Failed to delete job');
+                          } finally {
+                            setActionLoading(null);
+                          }
+                        }}
+                        disabled={actionLoading === `delete-job-${j.job_id}`}
+                      >
+                        Delete Job
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {jobs.length === 0 && (
+                  <div className="text-sm text-muted-foreground py-6 text-center">No evaluations found.</div>
+                )}
               </div>
             </CardContent>
           </Card>

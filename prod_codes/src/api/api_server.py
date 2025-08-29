@@ -36,7 +36,8 @@ from database.database import (
     complete_evaluation_job, save_student_evaluation,
     get_evaluation_job, get_student_evaluations, get_all_evaluation_jobs,
     get_dashboard_statistics, get_recent_evaluations, delete_evaluation_job,
-    get_or_create_user, get_user_by_id, get_all_users, update_user_role, toggle_user_status
+    get_or_create_user, get_user_by_id, get_all_users, update_user_role, toggle_user_status,
+    delete_user_and_data
 )
 
 
@@ -338,6 +339,19 @@ async def manage_user(request: UserManagementRequest, admin_user: dict = Depends
 
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
+
+@app.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: int, admin_user: dict = Depends(get_admin_user)):
+    """Delete a user and all their data (admin only)."""
+    # Prevent self-deletion via API for safety
+    if admin_user.get('id') == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+
+    success = await delete_user_and_data(user_id)
+    if success:
+        return {"message": "User and all associated data deleted successfully"}
+    else:
+        raise HTTPException(status_code=404, detail="User not found")
 
 @app.post("/upload/evaluation", response_model=UploadResponse)
 async def upload_evaluation(

@@ -298,6 +298,10 @@ class ApiService {
 
     return this.post('/admin/users/manage', payload);
   }
+
+  async deleteUser(userId: number): Promise<void> {
+    return this.delete(`/admin/users/${userId}`);
+  }
 }
 
 export const apiService = new ApiService();

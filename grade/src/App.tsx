@@ -12,7 +12,7 @@ import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Admin from "./pages/Admin";
 import AppLayout from "./components/layout/AppLayout";
-import { AuthProvider, useAuth } from "./lib/AuthContext";
+import { AuthProvider, useAuth } from "@/lib/AuthContext";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +42,7 @@ const AppRoutes = () => {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/upload" element={<Upload />} />
         <Route path="/results" element={<Results />} />
+  <Route path="/results/:jobId" element={<Results />} />
         <Route path="/admin" element={<Admin />} />
         {/* Any other routes also need auth */}
         <Route path="*" element={<NotFound />} />

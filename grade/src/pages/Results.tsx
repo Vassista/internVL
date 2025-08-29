@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,10 +50,11 @@ const StatusBadge = ({ status }: { status: string }) => {
 
 const Results = () => {
   const [searchParams] = useSearchParams();
+  const { jobId: routeJobId } = useParams();
   const navigate = useNavigate();
 
   // Get job ID from URL parameters
-  const urlJobId = searchParams.get('job_id');
+  const urlJobId = searchParams.get('job_id') || routeJobId || '';
 
   const [jobId, setJobId] = useState<string>(urlJobId || '');
   const [searchInput, setSearchInput] = useState<string>(urlJobId || '');
