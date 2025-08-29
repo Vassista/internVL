@@ -162,7 +162,6 @@ const Results = () => {
   };
 
   // Search for jobs by name to provide suggestions
-  // Search for jobs by name to provide suggestions (with better error handling for busy server)
   const searchJobSuggestions = async (query: string) => {
     if (query.length < 2) {
       setSearchSuggestions([]);
@@ -180,8 +179,6 @@ const Results = () => {
       setSearchSuggestions([]);
       setShowSuggestions(false);
 
-      // Don't show search errors unless it's a connection issue
-      // This prevents overwhelming users when the model is busy
       if (err instanceof Error && err.message.includes('Failed to fetch')) {
         console.warn('Search temporarily unavailable - server may be busy with evaluations');
       }
