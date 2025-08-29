@@ -26,10 +26,23 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 class Base(DeclarativeBase):
     pass
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    picture: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), default="user")  # 'user' or 'admin'
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Integer, default=1)
+
 class EvaluationJob(Base):
     __tablename__ = "evaluation_jobs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)  # Link to user
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="processing")
     total_files: Mapped[int] = mapped_column(Integer, default=0)
@@ -74,11 +87,12 @@ async def get_db_session() -> AsyncSession:
     async with async_session() as session:
         return session
 
-async def save_evaluation_job(job_id: str, job_name: str, total_files: int) -> None:
+async def save_evaluation_job(job_id: str, job_name: str, total_files: int, user_id: int) -> None:
     """Save a new evaluation job"""
     async with async_session() as session:
         job = EvaluationJob(
             id=job_id,
+            user_id=user_id,
             name=job_name,
             status="processing",
             total_files=total_files,
@@ -86,6 +100,124 @@ async def save_evaluation_job(job_id: str, job_name: str, total_files: int) -> N
         )
         session.add(job)
         await session.commit()
+
+# User management functions
+async def get_or_create_user(email: str, name: str, picture: str = None, role: str = "user", update_role: bool = False) -> dict:
+    """Get existing user or create new one
+
+    Args:
+        email: User email
+        name: User name
+        picture: User picture URL
+        role: Role for new users (ignored for existing users unless update_role=True)
+        update_role: Whether to update role for existing users
+    """
+    async with async_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+        if user:
+            # Update last login and user info
+            user.last_login = datetime.utcnow()
+            user.name = name  # Update name in case it changed
+            if update_role:  # Only update role if explicitly requested
+                user.role = role
+            if picture:
+                user.picture = picture
+            await session.commit()
+
+            return {
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "picture": user.picture,
+                "role": user.role,
+                "created_at": user.created_at.isoformat(),
+                "last_login": user.last_login.isoformat() if user.last_login else None,
+                "is_active": bool(user.is_active)
+            }
+        else:
+            # Create new user
+            new_user = User(
+                email=email,
+                name=name,
+                picture=picture,
+                role=role,  # Use provided role
+                last_login=datetime.utcnow()
+            )
+            session.add(new_user)
+            await session.commit()
+            await session.refresh(new_user)
+
+            return {
+                "id": new_user.id,
+                "email": new_user.email,
+                "name": new_user.name,
+                "picture": new_user.picture,
+                "role": new_user.role,
+                "created_at": new_user.created_at.isoformat(),
+                "last_login": new_user.last_login.isoformat() if new_user.last_login else None,
+                "is_active": bool(new_user.is_active)
+            }
+
+async def get_user_by_id(user_id: int) -> Optional[dict]:
+    """Get user by ID"""
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        if user:
+            return {
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "picture": user.picture,
+                "role": user.role,
+                "created_at": user.created_at.isoformat(),
+                "last_login": user.last_login.isoformat() if user.last_login else None,
+                "is_active": bool(user.is_active)
+            }
+        return None
+
+async def get_all_users() -> List[dict]:
+    """Get all users (admin only)"""
+    async with async_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(User).order_by(User.created_at.desc()))
+        users = result.scalars().all()
+
+        return [
+            {
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "picture": user.picture,
+                "role": user.role,
+                "created_at": user.created_at.isoformat(),
+                "last_login": user.last_login.isoformat() if user.last_login else None,
+                "is_active": bool(user.is_active)
+            }
+            for user in users
+        ]
+
+async def update_user_role(user_id: int, role: str) -> bool:
+    """Update user role (admin only)"""
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        if user:
+            user.role = role
+            await session.commit()
+            return True
+        return False
+
+async def toggle_user_status(user_id: int) -> bool:
+    """Toggle user active status (admin only)"""
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        if user:
+            user.is_active = not user.is_active
+            await session.commit()
+            return True
+        return False
 
 async def update_job_progress(job_id: str, processed_files: int) -> None:
     """Update job progress"""
@@ -139,11 +271,14 @@ async def save_student_evaluation(
         session.add(evaluation)
         await session.commit()
 
-async def get_evaluation_job(job_id: str) -> Optional[dict]:
+async def get_evaluation_job(job_id: str, user_id: int = None, user_role: str = "user") -> Optional[dict]:
     """Get evaluation job by ID"""
     async with async_session() as session:
         job = await session.get(EvaluationJob, job_id)
         if job:
+            # Check if user has access to this job
+            if user_role != "admin" and user_id and job.user_id != user_id:
+                return None  # User can only access their own jobs unless they're admin
             # Parse JSON fields safely
             results = None
             if job.results:
@@ -205,18 +340,30 @@ async def get_student_evaluations(job_id: str) -> List[dict]:
             for eval in evaluations
         ]
 
-async def get_all_evaluation_jobs() -> List[dict]:
-    """Get all evaluation jobs ordered by creation date"""
+async def get_all_evaluation_jobs(user_id: int = None, user_role: str = "user") -> List[dict]:
+    """Get all evaluation jobs, filtered by user for regular users"""
     async with async_session() as session:
         from sqlalchemy import select
-        result = await session.execute(
-            select(EvaluationJob).order_by(EvaluationJob.created_at.desc())
-        )
+
+        if user_role == "admin":
+            # Admins can see all jobs
+            result = await session.execute(
+                select(EvaluationJob).order_by(EvaluationJob.created_at.desc())
+            )
+        else:
+            # Regular users can only see their own jobs
+            result = await session.execute(
+                select(EvaluationJob)
+                .where(EvaluationJob.user_id == user_id)
+                .order_by(EvaluationJob.created_at.desc())
+            )
+
         jobs = result.scalars().all()
 
         return [
             {
                 "id": job.id,
+                "user_id": job.user_id,
                 "name": job.name,
                 "status": job.status,
                 "total_files": job.total_files,
@@ -230,39 +377,46 @@ async def get_all_evaluation_jobs() -> List[dict]:
             for job in jobs
         ]
 
-async def get_dashboard_statistics() -> dict:
+async def get_dashboard_statistics(user_id: int = None, user_role: str = "user") -> dict:
     """Get dashboard statistics"""
     async with async_session() as session:
-        from sqlalchemy import select, func
+        from sqlalchemy import select, func, and_
+
+        # Build base query with user filtering
+        base_query = select(func.count(EvaluationJob.id))
+        if user_role != "admin" and user_id:
+            base_query = base_query.where(EvaluationJob.user_id == user_id)
 
         # Get total jobs
-        total_jobs_result = await session.execute(
-            select(func.count(EvaluationJob.id))
-        )
+        total_jobs_result = await session.execute(base_query)
         total_jobs = total_jobs_result.scalar()
 
         # Get completed jobs
-        completed_jobs_result = await session.execute(
-            select(func.count(EvaluationJob.id)).where(EvaluationJob.status == "completed")
-        )
+        completed_query = select(func.count(EvaluationJob.id)).where(EvaluationJob.status == "completed")
+        if user_role != "admin" and user_id:
+            completed_query = completed_query.where(EvaluationJob.user_id == user_id)
+        completed_jobs_result = await session.execute(completed_query)
         completed_jobs = completed_jobs_result.scalar()
 
         # Get failed jobs
-        failed_jobs_result = await session.execute(
-            select(func.count(EvaluationJob.id)).where(EvaluationJob.status == "failed")
-        )
+        failed_query = select(func.count(EvaluationJob.id)).where(EvaluationJob.status == "failed")
+        if user_role != "admin" and user_id:
+            failed_query = failed_query.where(EvaluationJob.user_id == user_id)
+        failed_jobs_result = await session.execute(failed_query)
         failed_jobs = failed_jobs_result.scalar()
 
-        # Get total students evaluated
-        total_students_result = await session.execute(
-            select(func.count(StudentEvaluation.id))
-        )
+        # Get total students evaluated (join with jobs to filter by user)
+        students_query = select(func.count(StudentEvaluation.id))
+        if user_role != "admin" and user_id:
+            students_query = students_query.join(EvaluationJob, StudentEvaluation.job_id == EvaluationJob.id).where(EvaluationJob.user_id == user_id)
+        total_students_result = await session.execute(students_query)
         total_students = total_students_result.scalar()
 
         # Get average score
-        avg_score_result = await session.execute(
-            select(func.avg(StudentEvaluation.percentage))
-        )
+        avg_query = select(func.avg(StudentEvaluation.percentage))
+        if user_role != "admin" and user_id:
+            avg_query = avg_query.join(EvaluationJob, StudentEvaluation.job_id == EvaluationJob.id).where(EvaluationJob.user_id == user_id)
+        avg_score_result = await session.execute(avg_query)
         avg_score = avg_score_result.scalar() or 0
 
         return {
@@ -274,15 +428,16 @@ async def get_dashboard_statistics() -> dict:
             "average_score": round(avg_score, 2) if avg_score else 0
         }
 
-async def get_recent_evaluations(limit: int = 10) -> List[dict]:
+async def get_recent_evaluations(user_id: int = None, user_role: str = "user", limit: int = 10) -> List[dict]:
     """Get recent evaluations"""
     async with async_session() as session:
         from sqlalchemy import select
-        result = await session.execute(
-            select(EvaluationJob)
-            .order_by(EvaluationJob.created_at.desc())
-            .limit(limit)
-        )
+
+        query = select(EvaluationJob).order_by(EvaluationJob.created_at.desc()).limit(limit)
+        if user_role != "admin" and user_id:
+            query = query.where(EvaluationJob.user_id == user_id)
+
+        result = await session.execute(query)
         jobs = result.scalars().all()
 
         return [
