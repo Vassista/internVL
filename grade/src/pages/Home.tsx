@@ -21,7 +21,7 @@ const Home: React.FC = () => {
 
         {/* Content */}
         <div className="relative z-10 text-center text-white max-w-3xl mx-auto px-4">
-          <h1 className="text-5xl md:text-6xl font-bold mb-6">Revolutionize Grading with AI</h1>
+          <h1 className="text-5xl md:text-6xl font-bold mb-6">InternVL</h1>
           <p className="text-xl md:text-2xl mb-10">Automate answer sheet evaluation with precision and save valuable teaching time.</p>
 
           <div className="flex flex-col sm:flex-row justify-center gap-4">
@@ -90,7 +90,7 @@ const Home: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
             {/* Column 1 */}
             <div>
-              <h3 className="text-xl font-bold mb-4">Test</h3>
+              <h3 className="text-xl font-bold mb-4">InternVL</h3>
               <p className="text-gray-400">Revolutionizing answer sheet evaluation with AI-powered automation.</p>
               <div className="flex mt-4 space-x-4">
                 {/* Social Media Icons */}
@@ -136,7 +136,7 @@ const Home: React.FC = () => {
           </div>
 
           <div className="border-t border-gray-800 pt-8 mt-8 text-center text-gray-400">
-            <p>&copy; {new Date().getFullYear()} Test. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} InternVL. All rights reserved.</p>
           </div>
         </div>
       </footer>
