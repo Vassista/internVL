@@ -345,12 +345,13 @@ async def get_evaluation_results(job_id: str):
     # Parse results and summary stats from job (already parsed by database layer)
     results = job.get("results", []) or []
     summary_stats = job.get("summary_stats", {}) or {}
+    model_answers = job.get("model_answers", []) or []
 
     return EvaluationResults(
         job_id=job_id,
         job_name=job.get("name") or f"Evaluation_{job_id[:8]}",
         status=job["status"],
-        model_answers=[],
+        model_answers=model_answers,
         student_results=results,
         summary=summary_stats,
         created_at=datetime.fromisoformat(job["created_at"]),
@@ -540,6 +541,14 @@ async def process_evaluation_job(
                 "status": result.status
             })
 
+        # Convert model_answers to JSON-serializable format
+        model_answers_dict = []
+        for ans in model_answers:
+            model_answers_dict.append({
+                "sn": ans.sn,
+                "answer": ans.answer
+            })
+
         # Determine final job status based on processing results
         total_files = len(student_files)
         processed_files = len(student_results)
@@ -547,16 +556,16 @@ async def process_evaluation_job(
         if processed_files == 0:
             # No students processed successfully - mark as failed
             error_message = f"Failed to process any of the {total_files} student files. Please check the file formats and try again."
-            await complete_evaluation_job(job_id, results_dict, summary, error_message)
+            await complete_evaluation_job(job_id, results_dict, summary, model_answers_dict, error_message)
             print(f"❌ Job {job_id} failed! Processed 0/{total_files} students.")
         elif processed_files == total_files:
             # All students processed successfully - mark as completed
-            await complete_evaluation_job(job_id, results_dict, summary, None)
+            await complete_evaluation_job(job_id, results_dict, summary, model_answers_dict, None)
             print(f"✅ Job {job_id} completed successfully! Processed {processed_files}/{total_files} students.")
         else:
             # Partial success - mark as completed with warning
             error_message = f"Partially completed: Successfully processed {processed_files} out of {total_files} student files. Some files may have had formatting issues."
-            await complete_evaluation_job(job_id, results_dict, summary, error_message)
+            await complete_evaluation_job(job_id, results_dict, summary, model_answers_dict, error_message)
             print(f"⚠️ Job {job_id} partially completed! Processed {processed_files}/{total_files} students.")
 
     except Exception as e:

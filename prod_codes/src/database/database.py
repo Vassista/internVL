@@ -41,6 +41,7 @@ class EvaluationJob(Base):
     # Store results as JSON
     results: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     summary_stats: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    model_answers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 class StudentEvaluation(Base):
     __tablename__ = "student_evaluations"
@@ -98,6 +99,7 @@ async def complete_evaluation_job(
     job_id: str,
     results: dict,
     summary_stats: dict,
+    model_answers: list = None,
     error_message: Optional[str] = None
 ) -> None:
     """Mark a job as completed and save results"""
@@ -108,6 +110,7 @@ async def complete_evaluation_job(
             job.completed_at = datetime.utcnow()
             job.results = json.dumps(results) if results else None
             job.summary_stats = json.dumps(summary_stats) if summary_stats else None
+            job.model_answers = json.dumps(model_answers) if model_answers else None
             job.error_message = error_message
             await session.commit()
 
@@ -156,6 +159,13 @@ async def get_evaluation_job(job_id: str) -> Optional[dict]:
                 except json.JSONDecodeError:
                     summary_stats = None
 
+            model_answers = None
+            if job.model_answers:
+                try:
+                    model_answers = json.loads(job.model_answers)
+                except json.JSONDecodeError:
+                    model_answers = None
+
             return {
                 "id": job.id,
                 "name": job.name,
@@ -166,7 +176,8 @@ async def get_evaluation_job(job_id: str) -> Optional[dict]:
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "error_message": job.error_message,
                 "results": results,
-                "summary_stats": summary_stats
+                "summary_stats": summary_stats,
+                "model_answers": model_answers
             }
         return None
 
