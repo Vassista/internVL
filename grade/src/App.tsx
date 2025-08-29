@@ -10,6 +10,7 @@ import Upload from "./pages/Upload";
 import Results from "./pages/Results";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
+import Admin from "./pages/Admin";
 import AppLayout from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 
@@ -41,6 +42,7 @@ const AppRoutes = () => {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/upload" element={<Upload />} />
         <Route path="/results" element={<Results />} />
+        <Route path="/admin" element={<Admin />} />
         {/* Any other routes also need auth */}
         <Route path="*" element={<NotFound />} />
       </Route>

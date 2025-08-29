@@ -71,6 +71,16 @@ const AppLayout = () => {
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {user?.role === 'admin' && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <Link to="/admin">
+                        <Users className="h-4 w-4" />
+                        <span>Admin Panel</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
