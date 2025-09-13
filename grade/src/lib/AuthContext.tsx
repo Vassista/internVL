@@ -68,6 +68,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     }
     setIsLoading(false);
+
+    // Logout immediately when user closes the webpage
+    const handleBeforeUnload = () => {
+      localStorage.removeItem('user');
+      localStorage.removeItem('authToken');
+      apiService.setAuthToken(null);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
   }, []);
 
   const loginWithGoogle = async (credential: string) => {
