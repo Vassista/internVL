@@ -228,12 +228,20 @@ const Results = () => {
     // Load initial suggestions on mount
     loadInitialSuggestions();
 
-    // Load all evaluations if no specific job is being viewed
     if (!urlJobId) {
+      // Reset all job-related state and load all evaluations
+      setJobId('');
+      setSearchInput('');
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+      setSearching(false);
+      setLoadingSuggestions(false);
+      setJobStatus(null);
+      setResults(null);
+      setError(null);
+      setLoading(false);
       loadAllEvaluations();
-    }
-
-    if (urlJobId) {
+    } else {
       setJobId(urlJobId);
       setSearchInput(urlJobId);
       loadJobData(urlJobId);
