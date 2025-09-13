@@ -47,6 +47,9 @@ class EvaluationJob(Base):
     status: Mapped[str] = mapped_column(String(20), default="processing")
     total_files: Mapped[int] = mapped_column(Integer, default=0)
     processed_files: Mapped[int] = mapped_column(Integer, default=0)
+    # Currently processing file info
+    current_file: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    current_roll: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -81,6 +84,17 @@ async def init_database():
     """Initialize the database tables"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Ensure newly added columns exist (lightweight migration safeguard)
+        try:
+            await conn.exec_driver_sql(
+                "ALTER TABLE evaluation_jobs ADD COLUMN IF NOT EXISTS current_file VARCHAR(255)"
+            )
+            await conn.exec_driver_sql(
+                "ALTER TABLE evaluation_jobs ADD COLUMN IF NOT EXISTS current_roll VARCHAR(50)"
+            )
+        except Exception as e:
+            # Non-fatal; log to stdout (avoid raising to keep startup healthy)
+            print(f"Warning: could not ensure new columns exist: {e}")
 
 async def get_db_session() -> AsyncSession:
     """Get a database session"""
@@ -259,6 +273,18 @@ async def update_job_progress(job_id: str, processed_files: int) -> None:
             job.processed_files = processed_files
             await session.commit()
 
+async def update_job_progress_with_file(job_id: str, processed_files: int, current_file: Optional[str] = None, current_roll: Optional[str] = None) -> None:
+    """Update job progress and current file/roll being processed"""
+    async with async_session() as session:
+        job = await session.get(EvaluationJob, job_id)
+        if job:
+            job.processed_files = processed_files
+            if current_file is not None:
+                job.current_file = current_file
+            if current_roll is not None:
+                job.current_roll = current_roll
+            await session.commit()
+
 async def complete_evaluation_job(
     job_id: str,
     results: dict,
@@ -339,6 +365,8 @@ async def get_evaluation_job(job_id: str, user_id: int = None, user_role: str = 
                 "status": job.status,
                 "total_files": job.total_files,
                 "processed_files": job.processed_files,
+                "current_file": job.current_file,
+                "current_roll": job.current_roll,
                 "created_at": job.created_at.isoformat(),
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "error_message": job.error_message,
@@ -400,6 +428,8 @@ async def get_all_evaluation_jobs(user_id: int = None, user_role: str = "user") 
                 "status": job.status,
                 "total_files": job.total_files,
                 "processed_files": job.processed_files,
+                "current_file": job.current_file,
+                "current_roll": job.current_roll,
                 "created_at": job.created_at.isoformat(),
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "error_message": job.error_message,
@@ -479,6 +509,8 @@ async def get_recent_evaluations(user_id: int = None, user_role: str = "user", l
                 "status": job.status,
                 "total_files": job.total_files,
                 "processed_files": job.processed_files,
+                "current_file": job.current_file,
+                "current_roll": job.current_roll,
                 "created_at": job.created_at.isoformat(),
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "error_message": job.error_message

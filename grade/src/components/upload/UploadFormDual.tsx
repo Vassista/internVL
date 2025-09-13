@@ -611,7 +611,21 @@ const UploadFormDual = () => {
                   className="w-full h-2"
                 />
 
-                {/* Processing info banner removed as requested */}
+                {/* Detailed processing info */}
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-2">
+                    <div className="text-xs text-gray-500">Job ID</div>
+                    <div className="font-mono text-sm text-gray-700 truncate">{jobId}</div>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-2">
+                    <div className="text-xs text-gray-500">Current File</div>
+                    <div className="text-sm text-gray-700 truncate">{processingStatus.current_file || processingStatus.current_file_name || '—'}</div>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-2">
+                    <div className="text-xs text-gray-500">Current Roll</div>
+                    <div className="text-sm text-gray-700 truncate">{processingStatus.current_roll || processingStatus.current_student_roll || '—'}</div>
+                  </div>
+                </div>
               </div>
             )}
 

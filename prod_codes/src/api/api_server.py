@@ -33,6 +33,7 @@ from utils.api_utils import (
 )
 from database.database import (
     init_database, save_evaluation_job, update_job_progress,
+    update_job_progress_with_file,
     complete_evaluation_job, save_student_evaluation,
     get_evaluation_job, get_student_evaluations, get_all_evaluation_jobs,
     get_dashboard_statistics, get_recent_evaluations, delete_evaluation_job,
@@ -508,6 +509,8 @@ async def get_evaluation_status(job_id: str, current_user: dict = Depends(get_cu
         status=job["status"],
         total_students=job["total_files"],
         processed_students=job["processed_files"],
+        current_file=job.get("current_file"),
+        current_roll=job.get("current_roll"),
         created_at=datetime.fromisoformat(job["created_at"]),
         completed_at=datetime.fromisoformat(job["completed_at"]) if job["completed_at"] else None,
         error_message=job.get("error_message")
@@ -658,6 +661,17 @@ async def process_evaluation_job(
                 # Extract roll number from filename
                 roll_number = extract_roll_number_from_filename(os.path.basename(student_file))
 
+                # Persist CURRENT file/roll before OCR so frontend shows it immediately
+                try:
+                    await update_job_progress_with_file(
+                        job_id,
+                        processed_count,  # processed_count reflects already completed ones
+                        os.path.basename(student_file),
+                        roll_number
+                    )
+                except NameError:
+                    await update_job_progress(job_id, processed_count)
+
                 # Process student answer sheet
                 student_df = run_ocr_with_global_model(student_file)
 
@@ -707,8 +721,16 @@ async def process_evaluation_job(
                 else:
                     print(f"Failed to process student: {student_file}")
 
-                # Update progress in database
-                await update_job_progress(job_id, processed_count)
+                # After successful (or attempted) processing, update processed count & keep current file/roll
+                try:
+                    await update_job_progress_with_file(
+                        job_id,
+                        processed_count,
+                        os.path.basename(student_file),
+                        roll_number
+                    )
+                except NameError:
+                    await update_job_progress(job_id, processed_count)
 
             except Exception as e:
                 print(f"Error processing student {student_file}: {e}")

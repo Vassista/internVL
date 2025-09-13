@@ -64,6 +64,8 @@ export interface JobStatus {
   status: string;
   total_students: number;
   processed_students: number;
+  current_file?: string;
+  current_roll?: string;
   created_at: string;
   completed_at?: string;
   error_message?: string;
