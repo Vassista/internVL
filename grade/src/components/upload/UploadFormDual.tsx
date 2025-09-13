@@ -611,18 +611,7 @@ const UploadFormDual = () => {
                   className="w-full h-2"
                 />
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="font-medium text-blue-900">Job ID:</span>
-                      <p className="text-blue-700 font-mono text-xs truncate">{jobId}</p>
-                    </div>
-                    <div>
-                      <span className="font-medium text-blue-900">Status:</span>
-                      <p className="text-blue-700 capitalize">{processingStatus.status}</p>
-                    </div>
-                  </div>
-                </div>
+                {/* Processing info banner removed as requested */}
               </div>
             )}
 
