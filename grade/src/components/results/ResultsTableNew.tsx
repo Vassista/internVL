@@ -22,6 +22,10 @@ interface ResultsTableProps {
 const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<StudentResult | null>(null);
+  // Sanitize roll number to create safe filenames
+  const sanitizeFileName = (name: string) => {
+    return name.replace(/\s+/g, '-').replace(/[\\/:*?"<>|]+/g, '');
+  };
 
   // Filter results based on search term
   const filteredResults = results.filter(result =>
@@ -135,7 +139,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) =>
                         modelAnswers[String(answer.sn)] || "N/A"
                       ])
                     ]}
-                    fileName={`student-answers-${selectedStudent.roll_number}`}
+                    fileName={sanitizeFileName(selectedStudent.roll_number)}
                     sheetName="Student Answers"
                     buttonText="Export Answers"
                   />
