@@ -1,5 +1,5 @@
 """
-Database models and connection for InternVL API using PostgreSQL
+Database models and connection for AutoEval API using PostgreSQL
 """
 import asyncio
 from datetime import datetime

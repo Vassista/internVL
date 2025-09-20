@@ -1,5 +1,5 @@
 """
-Main API server for automated answer sheet evaluation using InternVL
+AutoEval API server — Automatic Evaluation of Handwritten True/False Answer Sheets
 """
 
 import os
@@ -43,8 +43,8 @@ from database.database import (
 
 
 app = FastAPI(
-    title="InternVL API",
-    description="Automated answer sheet evaluation using InternVL",
+    title="AutoEval API",
+    description="Automatic Evaluation of Handwritten True/False Answer Sheets",
     version="1.0.0"
 )
 app.add_middleware(

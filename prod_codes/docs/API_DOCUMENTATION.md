@@ -1,6 +1,6 @@
-# InternVL Evaluation API
+# AutoEval Evaluation API
 
-A REST API for automated answer sheet evaluation using InternVL computer vision model.
+Automatic Evaluation of Handwritten True/False Answer Sheets.
 
 ## Base URL
 ```

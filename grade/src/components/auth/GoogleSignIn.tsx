@@ -75,7 +75,7 @@ const GoogleSignIn = () => {
       await loginWithGoogle(response.credential);
       toast({
         title: "Login successful",
-        description: "Welcome to InternVL!",
+  description: "Welcome to AutoEval!",
         duration: 2000,
       });
       navigate('/dashboard');
@@ -117,7 +117,7 @@ const GoogleSignIn = () => {
   }  return (
     <Card className="w-[400px] mx-auto">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">Welcome to InternVL</CardTitle>
+  <CardTitle className="text-2xl">Welcome to AutoEval</CardTitle>
         <CardDescription>
           Sign in with your Google account to access your evaluation dashboard
         </CardDescription>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Main entry point for the InternVL API Server
+Main entry point for the AutoEval API Server
 """
 
 import sys
@@ -10,7 +10,7 @@ from api.api_server import app
 import uvicorn
 
 if __name__ == "__main__":
-    print("🚀 Starting InternVL API Server...")
+    print("🚀 Starting AutoEval API Server...")
     uvicorn.run(
         app,
         host="0.0.0.0",

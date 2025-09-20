@@ -1,6 +1,6 @@
 /**
- * API Service for InternVL
- * API Service for InternVL
+ * API Service for AutoEval
+ * API Service for AutoEval
  * Handles communication with FastAPI backend
  */
 

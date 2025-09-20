@@ -27,7 +27,7 @@ const AppLayout = () => {
       <Sidebar className="border-r">
         <SidebarHeader>
           <div className="flex items-center gap-2 px-4">
-            <div className="font-semibold text-lg text-primary">InternVL</div>
+            <div className="font-semibold text-lg text-primary">AutoEval</div>
           </div>
           {user && (
             <div className="flex items-center gap-3 px-4 py-2 border-b">

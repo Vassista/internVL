@@ -7,22 +7,20 @@ const Home: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Hero Section */}
-      <section className="relative h-[500px] flex items-center justify-center">
-        {/* Background with gradient overlay */}
-        <div
-          className="absolute inset-0 bg-cover bg-center z-0"
-          style={{
-            backgroundImage: 'url(/placeholder.svg)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        ></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-900/70 to-purple-900/70 z-0"></div>
+      <section className="relative min-h-[420px] md:h-[520px] flex items-center justify-center overflow-hidden">
+        {/* Gradient background */}
+        <div className="absolute inset-0 z-0 bg-gradient-to-r from-blue-900 to-purple-900" />
+        {/* Centered watermark logo (no cropping) */}
+        <img
+          src="/hero_image.jpg"
+          alt="AutoEval hero"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 opacity-25 w-[80vw] md:w-[60vw] max-w-[900px] h-auto object-contain pointer-events-none select-none"
+        />
 
         {/* Content */}
-        <div className="relative z-10 text-center text-white max-w-3xl mx-auto px-4">
-          <h1 className="text-5xl md:text-6xl font-bold mb-6">InternVL</h1>
-          <p className="text-xl md:text-2xl mb-10">Automate answer sheet evaluation with precision and save valuable teaching time.</p>
+        <div className="relative z-20 text-center text-white max-w-3xl mx-auto px-4">
+          <h1 className="text-5xl md:text-6xl font-bold mb-6">AutoEval</h1>
+          <p className="text-xl md:text-2xl mb-10">Automatic Evaluation of Handwritten True/False Answer Sheets</p>
 
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Link to="/upload">
@@ -90,8 +88,8 @@ const Home: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
             {/* Column 1 */}
             <div>
-              <h3 className="text-xl font-bold mb-4">InternVL</h3>
-              <p className="text-gray-400">Revolutionizing answer sheet evaluation with AI-powered automation.</p>
+              <h3 className="text-xl font-bold mb-4">AutoEval</h3>
+              <p className="text-gray-400">Automatic Evaluation of Handwritten True/False Answer Sheets.</p>
               <div className="flex mt-4 space-x-4">
                 {/* Social Media Icons */}
                 <a href="#" className="text-gray-400 hover:text-white">
@@ -136,7 +134,7 @@ const Home: React.FC = () => {
           </div>
 
           <div className="border-t border-gray-800 pt-8 mt-8 text-center text-gray-400">
-            <p>&copy; {new Date().getFullYear()} InternVL. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} AutoEval. All rights reserved.</p>
           </div>
         </div>
       </footer>

@@ -1,7 +1,7 @@
-# InternVL API Documentation
+# AutoEval API Documentation
 
 ## Overview
-FastAPI server for automated answer sheet evaluation using InternVL computer vision model.
+Automatic Evaluation of Handwritten True/False Answer Sheets.
 
 ## Files Structure
 ```

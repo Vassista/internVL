@@ -1,5 +1,5 @@
 """
-API Utility Functions for InternVL
+API Utility Functions for AutoEval
 """
 import os
 import re
