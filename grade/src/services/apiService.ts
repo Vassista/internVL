@@ -167,9 +167,21 @@ class ApiService {
 
   async checkHealth() {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`);
+      // Create a timeout controller for the fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
       return await response.json();
     } catch (error) {
+      if (error.name === 'AbortError') {
+        console.error('Health check request timed out');
+        throw new Error('Request timed out');
+      }
       console.error('Health check failed:', error);
       throw error;
     }
@@ -177,12 +189,25 @@ class ApiService {
 
   async getPublicStats() {
     try {
-      const response = await fetch(`${API_BASE_URL}/public/stats`);
+      // Create a timeout controller for the fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch(`${API_BASE_URL}/public/stats`, {
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       return await response.json();
     } catch (error) {
+      if (error.name === 'AbortError') {
+        console.error('Public stats request timed out');
+        throw new Error('Request timed out');
+      }
       console.error('Public stats check failed:', error);
       throw error;
     }

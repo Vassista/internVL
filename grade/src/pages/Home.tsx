@@ -111,7 +111,7 @@ const useModelStatus = () => {
         console.log('Model status updated:', newStatus);
         setStatus(newStatus);
       } catch (error) {
-        console.log('API call failed, setting offline:', error.message);
+        console.log('API call failed, setting offline. Error:', error.message);
         const offlineStatus = {
           status: 'offline' as const,
           model_loaded: false,
@@ -155,7 +155,7 @@ const Home: React.FC = () => {
     // Check if API is completely offline first
     if (!modelStatus.isOnline) {
       return {
-        text: 'AI Service Offline',
+        text: 'Model is Offline',
         dotColor: 'bg-red-500',
         animate: 'animate-pulse'
       };
