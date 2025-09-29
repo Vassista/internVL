@@ -54,7 +54,6 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) =>
 
   return (
     <div className="space-y-4">
-      {/* Search */}
       <div className="flex items-center space-x-2">
         <Search className="h-4 w-4 text-gray-400" />
         <Input
@@ -65,8 +64,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) =>
         />
       </div>
 
-      {/* Results Table */}
-      <div className="rounded-md border">
+      <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -117,7 +115,6 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) =>
         </Table>
       </div>
 
-      {/* Student Detail Modal */}
       <Dialog open={!!selectedStudent} onOpenChange={() => setSelectedStudent(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -144,7 +141,6 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) =>
                     buttonText="Export Answers"
                   />
               </div>
-              {/* Summary */}
               <div className="grid grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
                 <div>
                   <div className="text-sm text-gray-500">Score</div>
@@ -166,7 +162,6 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results, modelAnswers }) =>
                 </div>
               </div>
 
-              {/* Answer Details */}
               <div>
                 <h4 className="font-semibold mb-3">Answer Breakdown</h4>
                 <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">

@@ -33,18 +33,15 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      {/* Public routes */}
       <Route path="/" element={<Home />} />
       <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" /> : <Login />} />
 
-      {/* Protected routes */}
       <Route element={isAuthenticated ? <AppLayout /> : <Navigate to="/login" />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/upload" element={<Upload />} />
         <Route path="/results" element={<Results />} />
   <Route path="/results/:jobId" element={<Results />} />
         <Route path="/admin" element={<Admin />} />
-        {/* Any other routes also need auth */}
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

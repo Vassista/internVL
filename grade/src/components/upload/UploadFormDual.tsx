@@ -611,7 +611,6 @@ const UploadFormDual = () => {
                   className="w-full h-2"
                 />
 
-                {/* Detailed processing info */}
                 <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-2">
                     <div className="text-xs text-gray-500">Job ID</div>
