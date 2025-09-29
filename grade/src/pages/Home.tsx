@@ -46,12 +46,20 @@ const useDashboardStats = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const dashboardStats = await apiService.getDashboardStats();
-        setStats(dashboardStats);
+        // Use the public stats endpoint instead of protected one
+        const publicStats = await apiService.getPublicStats();
+        setStats({
+          total_evaluations: publicStats.total_evaluations,
+          pending_evaluations: 0, // Not available in public stats
+          completed_evaluations: publicStats.total_evaluations, // Assume most are completed for homepage
+          failed_evaluations: 0, // Not exposed in public stats for security
+          total_students_processed: publicStats.total_students_processed,
+          average_score: publicStats.average_score
+        });
         setHasRealData(true);
         setError(null);
       } catch (err) {
-        console.error('Failed to fetch dashboard stats:', err);
+        console.error('Failed to fetch public stats:', err);
         setError('Failed to load stats');
         setHasRealData(false);
         // Keep stats at 0 if API fails - don't show fake data
@@ -74,12 +82,109 @@ const useDashboardStats = () => {
   return { stats, loading, error, hasRealData };
 };
 
+// Model status hook
+const useModelStatus = () => {
+  const [status, setStatus] = useState<{
+    status: 'healthy' | 'model_not_loaded' | 'offline';
+    model_loaded: boolean;
+    gpu_available: boolean;
+    isOnline: boolean;
+  }>({
+    status: 'offline',
+    model_loaded: false,
+    gpu_available: false,
+    isOnline: false
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const checkModelStatus = async () => {
+      try {
+        // Use public stats which includes model status
+        const publicStats = await apiService.getPublicStats();
+        const newStatus = {
+          status: publicStats.model_status,
+          model_loaded: publicStats.model_loaded,
+          gpu_available: true, // Assume true if API is responding
+          isOnline: publicStats.api_status === 'online'
+        };
+        console.log('Model status updated:', newStatus);
+        setStatus(newStatus);
+      } catch (error) {
+        console.log('API call failed, setting offline:', error.message);
+        const offlineStatus = {
+          status: 'offline' as const,
+          model_loaded: false,
+          gpu_available: false,
+          isOnline: false
+        };
+        console.log('Setting offline status:', offlineStatus);
+        setStatus(offlineStatus);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkModelStatus();
+    // Check status every 30 seconds
+    const interval = setInterval(checkModelStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return { status, loading };
+};
+
 const Home: React.FC = () => {
   const { stats, loading, error, hasRealData } = useDashboardStats();
+  const { status: modelStatus, loading: statusLoading } = useModelStatus();
 
   const sheetsProcessed = useCounter(hasRealData ? stats.total_students_processed : 0, 2500);
   const avgScore = useCounter(hasRealData ? Math.round(stats.average_score * 10) : 0, 2000);
   const totalEvaluations = useCounter(hasRealData ? stats.total_evaluations : 0, 1800);
+
+  // Get status display info
+  const getStatusInfo = () => {
+    if (statusLoading) {
+      return {
+        text: 'Checking Status...',
+        dotColor: 'bg-yellow-400',
+        animate: 'animate-pulse'
+      };
+    }
+
+    // Check if API is completely offline first
+    if (!modelStatus.isOnline) {
+      return {
+        text: 'AI Service Offline',
+        dotColor: 'bg-red-500',
+        animate: 'animate-pulse'
+      };
+    }
+
+    // API is online, check model status
+    if (modelStatus.status === 'healthy' && modelStatus.model_loaded) {
+      return {
+        text: 'AI Model Online',
+        dotColor: 'bg-emerald-400',
+        animate: 'animate-pulse'
+      };
+    }
+
+    if (modelStatus.status === 'model_not_loaded') {
+      return {
+        text: 'Model Not Loaded',
+        dotColor: 'bg-orange-400',
+        animate: 'animate-pulse'
+      };
+    }
+
+    // Default fallback
+    return {
+      text: 'Model Loading...',
+      dotColor: 'bg-yellow-400',
+      animate: 'animate-pulse'
+    };
+  };  const statusInfo = getStatusInfo();
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-gray-900">
@@ -104,8 +209,8 @@ const Home: React.FC = () => {
             </div>
 
             <div className="inline-flex items-center gap-2 rounded-full border-2 border-white/40 bg-white/25 backdrop-blur-md px-6 py-2 text-sm font-bold text-white mb-8 shadow-xl">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shadow-sm" />
-              <span className="tracking-wide">AI-Powered Grading</span>
+              <span className={`h-2 w-2 rounded-full ${statusInfo.dotColor} ${statusInfo.animate} shadow-sm`} />
+              <span className="tracking-wide">{statusInfo.text}</span>
             </div>
 
             <h1 className="font-black tracking-tight text-white text-6xl md:text-7xl leading-[0.95] mb-8 drop-shadow-2xl">
@@ -113,7 +218,7 @@ const Home: React.FC = () => {
             </h1>
 
             <p className="max-w-3xl text-xl md:text-2xl text-white font-medium leading-relaxed mb-12 drop-shadow-lg">
-              Automatic Evaluation of Handwritten True/False Answer Sheets
+              Automatic Evaluation of Handwritten Answer Sheets
             </p>
 
             <div className="flex flex-col sm:flex-row gap-6">
@@ -263,7 +368,7 @@ const Home: React.FC = () => {
           <div className="rounded-2xl bg-white/95 backdrop-blur px-8 py-10 md:py-14 flex flex-col md:flex-row items-center gap-8 justify-between">
             <div className="max-w-2xl text-center md:text-left">
               <h3 className="text-2xl md:text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-700">AutoEval</h3>
-              <p className="mt-2 text-gray-600 text-sm md:text-base leading-relaxed">Automatic Evaluation of Handwritten True/False Answer Sheets</p>
+              <p className="mt-2 text-gray-600 text-sm md:text-base leading-relaxed">Automatic Evaluation of Handwritten Answer Sheets</p>
             </div>
             <Link to="/upload" className="group">
               <Button className="px-8 py-5 text-base md:text-lg bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-800 shadow-lg shadow-indigo-900/30">
@@ -282,7 +387,7 @@ const Home: React.FC = () => {
             {/* Column 1 */}
             <div>
               <h3 className="text-xl font-bold mb-4 tracking-tight text-white">AutoEval</h3>
-              <p className="text-gray-400 max-w-sm leading-relaxed">Automatic Evaluation of Handwritten True/False Answer Sheets.</p>
+              <p className="text-gray-400 max-w-sm leading-relaxed">Automatic Evaluation of Handwritten Answer Sheets.</p>
               <div className="flex mt-5 space-x-4">
                 <a href="#" className="text-gray-400 hover:text-white transition-colors" aria-label="Facebook">
                   <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fillRule="evenodd" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" clipRule="evenodd"></path></svg>

@@ -1,5 +1,5 @@
 """
-AutoEval API server — Automatic Evaluation of Handwritten True/False Answer Sheets
+AutoEval API server — Automatic Evaluation of Handwritten Answer Sheets
 """
 
 import os
@@ -44,8 +44,10 @@ from database.database import (
 
 app = FastAPI(
     title="AutoEval API",
-    description="Automatic Evaluation of Handwritten True/False Answer Sheets",
-    version="1.0.0"
+    version="1.0.0",
+    description="Automatic Evaluation of Handwritten Answer Sheets",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 app.add_middleware(
     CORSMiddleware,
@@ -247,6 +249,33 @@ async def health_check():
         gpu_available=torch.cuda.is_available(),
         timestamp=datetime.now()
     )
+
+@app.get("/public/stats")
+async def get_public_stats():
+    """Get public statistics for homepage - no authentication required"""
+    try:
+        # Get global statistics (admin view without user filtering)
+        stats = await get_dashboard_statistics(user_id=None, user_role="admin")
+
+        # Return safe, aggregated statistics
+        return {
+            "total_evaluations": stats.get("total_evaluations", 0),
+            "total_students_processed": stats.get("total_students_processed", 0),
+            "average_score": stats.get("average_score", 0),
+            "model_status": "healthy" if model is not None else "model_not_loaded",
+            "model_loaded": model is not None,
+            "api_status": "online"
+        }
+    except Exception as e:
+        # Return safe defaults if database is unavailable
+        return {
+            "total_evaluations": 0,
+            "total_students_processed": 0,
+            "average_score": 0,
+            "model_status": "healthy" if model is not None else "model_not_loaded",
+            "model_loaded": model is not None,
+            "api_status": "online"
+        }
 
 # Authentication endpoints
 @app.post("/auth/login", response_model=LoginResponse)

@@ -1,6 +1,6 @@
-# AutoEval Evaluation API
+# AutoEval API Documentation
 
-Automatic Evaluation of Handwritten True/False Answer Sheets.
+Automatic Evaluation of Handwritten Answer Sheets.
 
 ## Base URL
 ```

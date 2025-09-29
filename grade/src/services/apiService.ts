@@ -175,6 +175,19 @@ class ApiService {
     }
   }
 
+  async getPublicStats() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/public/stats`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Public stats check failed:', error);
+      throw error;
+    }
+  }
+
   async uploadEvaluation(
     modelAnswer: File,
     studentSheets: File,

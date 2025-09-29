@@ -1,7 +1,9 @@
 # AutoEval API Documentation
 
 ## Overview
-Automatic Evaluation of Handwritten True/False Answer Sheets.
+# AutoEval
+
+Automatic Evaluation of Handwritten Answer Sheets.
 
 ## Files Structure
 ```
