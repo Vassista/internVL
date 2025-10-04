@@ -27,6 +27,9 @@ const UploadFormDual = () => {
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [uploadRetryCount, setUploadRetryCount] = useState(0);
   const [connectionError, setConnectionError] = useState(false);
+  const [isDraggingModel, setIsDraggingModel] = useState(false);
+  const [isDraggingZip, setIsDraggingZip] = useState(false);
+  const [isDraggingIndividual, setIsDraggingIndividual] = useState(false);
 
   const saveJobState = (jobData: {
     jobId: string;
@@ -99,11 +102,123 @@ const UploadFormDual = () => {
   };
 
   const removeStudentFile = (index: number) => {
-    const updatedFiles = studentFiles.filter((_, i) => i !== index);
-    setStudentFiles(updatedFiles);
+    setStudentFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const uploadFiles = async () => {
+  // Drag and drop handlers for model file
+  const handleModelDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingModel(true);
+  };
+
+  const handleModelDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingModel(false);
+  };
+
+  const handleModelDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingModel(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      const file = files[0];
+
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select a CSV file for model answers",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (file.size > 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "CSV file must be smaller than 1MB",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setModelFile(file);
+    }
+  };
+
+  // Drag and drop handlers for ZIP file
+  const handleZipDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingZip(true);
+  };
+
+  const handleZipDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingZip(false);
+  };
+
+  const handleZipDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingZip(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      const file = files[0];
+      if (file.name.toLowerCase().endsWith('.zip')) {
+        setStudentZipFile(file);
+      } else {
+        toast({
+          title: "Invalid file type",
+          description: "Please select a ZIP file",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
+  // Drag and drop handlers for individual files
+  const handleIndividualDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingIndividual(true);
+  };
+
+  const handleIndividualDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingIndividual(false);
+  };
+
+  const handleIndividualDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingIndividual(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const validExtensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'];
+      const validFiles = Array.from(files).filter(file => {
+        const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+        return validExtensions.includes(ext);
+      });
+
+      if (validFiles.length > 0) {
+        setStudentFiles(prev => [...prev, ...validFiles]);
+      } else {
+        toast({
+          title: "Invalid file types",
+          description: "Please select image files (JPG, PNG, BMP, TIFF)",
+          variant: "destructive"
+        });
+      }
+    }
+  };  const uploadFiles = async () => {
     if (!modelFile || !jobName.trim()) {
       toast({
         title: "Missing required fields",
@@ -387,7 +502,16 @@ const UploadFormDual = () => {
 
         <div className="space-y-2">
           <label className="block text-sm font-medium">Model Answer CSV File</label>
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+          <div
+            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+              isDraggingModel
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+            onDragOver={handleModelDragOver}
+            onDragLeave={handleModelDragLeave}
+            onDrop={handleModelDrop}
+          >
             <input
               type="file"
               id="model-file"
@@ -417,7 +541,9 @@ const UploadFormDual = () => {
               ) : (
                 <div className="space-y-2">
                   <FileUp className="h-8 w-8 mx-auto text-gray-400" />
-                  <p className="text-sm text-gray-600">Click to upload model answer CSV file</p>
+                  <p className="text-sm text-gray-600">
+                    {isDraggingModel ? 'Drop CSV file here' : 'Click to upload or drag & drop model answer CSV file'}
+                  </p>
                   <p className="text-xs text-gray-500">CSV format: sn,answer (e.g., 1,true)</p>
                 </div>
               )}
@@ -439,7 +565,16 @@ const UploadFormDual = () => {
 
           <TabsContent value="zip" className="space-y-2">
             <label className="block text-sm font-medium">Student Answer Sheets (ZIP)</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                isDraggingZip
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-300 hover:border-gray-400'
+              }`}
+              onDragOver={handleZipDragOver}
+              onDragLeave={handleZipDragLeave}
+              onDrop={handleZipDrop}
+            >
               <input
                 type="file"
                 id="student-zip-file"
@@ -469,8 +604,10 @@ const UploadFormDual = () => {
                 ) : (
                   <div className="space-y-2">
                     <Archive className="h-8 w-8 mx-auto text-gray-400" />
-                    <p className="text-sm text-gray-600">Click to upload ZIP file containing student answer sheets</p>
-                    <p className="text-xs text-gray-400">ZIP file should contain image files</p>
+                    <p className="text-sm text-gray-600">
+                      {isDraggingZip ? 'Drop ZIP file here' : 'Click to upload or drag & drop student answer sheets ZIP file'}
+                    </p>
+                    <p className="text-xs text-gray-400">ZIP file containing student answer sheet images</p>
                   </div>
                 )}
               </label>
@@ -479,7 +616,16 @@ const UploadFormDual = () => {
 
           <TabsContent value="individual" className="space-y-2">
             <label className="block text-sm font-medium">Student Answer Sheets (Individual Images)</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                isDraggingIndividual
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-300 hover:border-gray-400'
+              }`}
+              onDragOver={handleIndividualDragOver}
+              onDragLeave={handleIndividualDragLeave}
+              onDrop={handleIndividualDrop}
+            >
               <input
                 type="file"
                 id="student-files"
@@ -516,7 +662,9 @@ const UploadFormDual = () => {
                 ) : (
                   <div className="space-y-2">
                     <Images className="h-8 w-8 mx-auto text-gray-400" />
-                    <p className="text-sm text-gray-600">Click to select multiple student answer sheet images</p>
+                    <p className="text-sm text-gray-600">
+                      {isDraggingIndividual ? 'Drop image files here' : 'Click to select or drag & drop multiple student answer sheet images'}
+                    </p>
                     <p className="text-xs text-gray-400">Supports JPG, PNG, BMP, TIFF</p>
                   </div>
                 )}
